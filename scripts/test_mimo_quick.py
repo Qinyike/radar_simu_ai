@@ -8,7 +8,8 @@ project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
 import numpy as np
-from simulators.mimo_simulator import MimoLfmcwSimulator, MimoAntennaArray
+from contracts import MimoAntennaArray
+from simulators.mimo_simulator import MimoLfmcwSimulator
 from processors.mimo_processor import process_mimo
 
 print("=" * 70)

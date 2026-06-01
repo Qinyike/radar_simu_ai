@@ -17,29 +17,16 @@ if __name__ == "__main__":
 
 import numpy as np
 import matplotlib.pyplot as plt
-from contracts import ProcessedResult
+from contracts import ProcessedResult, Target
 from utils.axes import compute_edges
+from utils.physics import wrap_velocity
 
 
-def wrap_velocity(velocity, max_velocity):
-    """
-    计算多普勒模糊后的速度（考虑周期性）
-    
-    Args:
-        velocity: 真实速度 (m/s)
-        max_velocity: 最大不模糊速度 (m/s)
-        
-    Returns:
-        模糊后的速度 (m/s)，在 [-max_velocity, max_velocity] 范围内
-    """
-    # 多普勒频率是周期性的，周期为 PRF
-    # 对应的速度周期为 2 * max_velocity
-    velocity_range = 2 * max_velocity
-    
-    # 将速度映射到 [-max_velocity, max_velocity] 范围
-    wrapped_v = ((velocity + max_velocity) % velocity_range) - max_velocity
-    
-    return wrapped_v
+def _get_target_attr(target, key, default=None):
+    """兼容 Target 对象和 dict 的目标属性访问"""
+    if isinstance(target, Target):
+        return getattr(target, key, default)
+    return target.get(key, default) if isinstance(target, dict) else getattr(target, key, default)
 
 
 def plot_range_doppler(
@@ -206,8 +193,8 @@ def plot_comprehensive(
         colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta', 'yellow', 'lime', 'pink']
         
         for i, target in enumerate(target_info['targets']):
-            R_true = target['range']
-            V_true = target['velocity']
+            R_true = _get_target_attr(target, 'range')
+            V_true = _get_target_attr(target, 'velocity')
             
             # 计算模糊后的速度
             V_wrapped = wrap_velocity(V_true, max_velocity)
@@ -251,7 +238,7 @@ def plot_comprehensive(
         colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta', 'yellow', 'lime', 'pink']
         
         for i, target in enumerate(target_info['targets']):
-            R_true = target['range']
+            R_true = _get_target_attr(target, 'range')
             color = colors[i % len(colors)]
             marker = markers[i % len(markers)]
             
@@ -262,7 +249,7 @@ def plot_comprehensive(
         # 添加图例
         legend_elements = [plt.Line2D([0], [0], color=colors[i % len(colors)], 
                                      linestyle='--', linewidth=1.5, alpha=0.7,
-                                     label=f'T{i+1}: R={target["range"]}m')
+                                     label=f'T{i+1}: R={_get_target_attr(target, "range")}m')
                           for i, target in enumerate(target_info['targets'])]
         legend = ax2.legend(handles=legend_elements, loc='upper right', 
                           fontsize=8, framealpha=0.95)
@@ -546,8 +533,8 @@ def plot_mimo_comprehensive(
         markers = ['o', 's', '^', 'D', 'v']
         colors = ['red', 'blue', 'green', 'orange', 'purple']
         for i, t in enumerate(target_info['targets']):
-            v_wrapped = wrap_velocity(t['velocity'], max_v)
-            ax_rd.plot(t['range'], v_wrapped, marker=markers[i % len(markers)],
+            v_wrapped = wrap_velocity(_get_target_attr(t, 'velocity'), max_v)
+            ax_rd.plot(_get_target_attr(t, 'range'), v_wrapped, marker=markers[i % len(markers)],
                        color=colors[i % len(colors)], markersize=10,
                        markeredgewidth=2, markeredgecolor='white', linestyle='None',
                        label=f'T{i+1}')

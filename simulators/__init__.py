@@ -5,10 +5,7 @@
 """
 
 from simulators.lfmcw_simulator import LfmcwSimulator, create_automotive_lfmcw_simulator
-from simulators.mimo_simulator import (
-    MimoLfmcwSimulator,
-    dbf_angle_estimation
-)
+from simulators.mimo_simulator import MimoLfmcwSimulator
 from simulators.pmcw_simulator import PmcwSimulator, create_automotive_pmcw_simulator
 from contracts import MimoAntennaArray
 

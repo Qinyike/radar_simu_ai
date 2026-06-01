@@ -2,14 +2,129 @@
 数据定义/契约层 - 定义层间通信的核心数据结构和共享领域模型
 
 本模块定义了仿真框架的核心契约和共享模型：
-1. MimoAntennaArray: MIMO天线阵列配置（共享领域模型）
-2. SimResult: 仿真层与处理层之间的契约
-3. ProcessedResult: 处理层与可视化层之间的契约
+1. Target: 雷达目标数据类
+2. RadarConfig: 雷达参数配置
+3. MimoAntennaArray: MIMO天线阵列配置
+4. RadarSimulator: 仿真器抽象基类
+5. SimResult: 仿真层与处理层之间的契约
+6. ProcessedResult: 处理层与可视化层之间的契约
 """
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Protocol, runtime_checkable
 import numpy as np
+
+
+@dataclass
+class Target:
+    """
+    雷达目标
+
+    Attributes:
+        range: 距离 (m)
+        velocity: 径向速度 (m/s)
+        rcs: 雷达截面积 (dBsm)，默认 0
+        angle: 目标角度 (rad)，默认 0（非MIMO场景可忽略）
+    """
+    range: float
+    velocity: float
+    rcs: float = 0.0
+    angle: float = 0.0
+
+    def __post_init__(self):
+        if self.range < 0:
+            raise ValueError(f"目标距离不能为负: {self.range}")
+
+
+@dataclass
+class RadarConfig:
+    """
+    雷达参数配置
+
+    Attributes:
+        fc: 载波频率 (Hz)，默认 77 GHz
+        bandwidth: 信号带宽 (Hz)，默认 150 MHz
+        fs: 采样率 (Hz)，默认 20 MHz
+        prf: 脉冲重复频率 (Hz)，默认 20 kHz
+        num_chirps: chirp 数量，默认 256
+        c: 光速 (m/s)，默认 3e8
+    """
+    fc: float = 77e9
+    bandwidth: float = 150e6
+    fs: float = 20e6
+    prf: float = 20e3
+    num_chirps: int = 256
+    c: float = 3e8
+
+    def __post_init__(self):
+        if self.fc <= 0:
+            raise ValueError(f"载波频率必须为正: {self.fc}")
+        if self.bandwidth <= 0:
+            raise ValueError(f"带宽必须为正: {self.bandwidth}")
+        if self.fs <= 0:
+            raise ValueError(f"采样率必须为正: {self.fs}")
+        if self.prf <= 0:
+            raise ValueError(f"PRF必须为正: {self.prf}")
+        if self.num_chirps <= 0:
+            raise ValueError(f"chirp数量必须为正: {self.num_chirps}")
+        if self.c <= 0:
+            raise ValueError(f"光速必须为正: {self.c}")
+
+
+class RadarSimulator(ABC):
+    """仿真器抽象基类"""
+
+    @abstractmethod
+    def simulate(self, targets, snr_db: float = 20.0, seed: Optional[int] = None) -> "SimResult":
+        """
+        执行雷达仿真
+
+        Args:
+            targets: 目标列表 (list[Target] 或 list[dict])
+            snr_db: 信噪比 (dB)
+            seed: 随机种子
+
+        Returns:
+            SimResult: 仿真结果
+        """
+        ...
+
+
+@runtime_checkable
+class SignalProcessor(Protocol):
+    """信号处理器协议"""
+
+    def __call__(self, sim_result: "SimResult", **kwargs) -> "ProcessedResult":
+        """
+        处理仿真结果
+
+        Args:
+            sim_result: 仿真结果契约对象
+            **kwargs: 传递给处理函数的额外参数
+
+        Returns:
+            ProcessedResult: 处理结果
+        """
+        ...
+
+
+def _normalize_targets(targets) -> list[Target]:
+    """将 dict 或 Target 列表统一为 Target 列表"""
+    normalized = []
+    for t in targets:
+        if isinstance(t, Target):
+            normalized.append(t)
+        elif isinstance(t, dict):
+            normalized.append(Target(
+                range=t['range'],
+                velocity=t['velocity'],
+                rcs=t.get('rcs', 0),
+                angle=t.get('angle', 0)
+            ))
+        else:
+            raise TypeError(f"不支持的目标类型: {type(t)}")
+    return normalized
 
 
 class MimoAntennaArray:

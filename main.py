@@ -17,10 +17,11 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
-from contracts import SimResult, ProcessedResult
+from contracts import SimResult, ProcessedResult, Target
 from simulators import get_simulator
 from processors import get_processor
 from visualizers import plot_comprehensive, plot_range_doppler, plot_range_profile
+from utils.physics import compute_max_unambiguous_velocity
 
 
 def run_simulation(
@@ -61,9 +62,11 @@ def run_simulation(
     
     print(f"\n[1/4] 配置目标场景:")
     for i, target in enumerate(targets, 1):
-        print(f"  目标 {i}: 距离={target['range']}m, "
-              f"速度={target['velocity']}m/s, "
-              f"RCS={target.get('rcs', 0)}dBsm")
+        if isinstance(target, Target):
+            r, v, rc = target.range, target.velocity, target.rcs
+        else:
+            r, v, rc = target['range'], target['velocity'], target.get('rcs', 0)
+        print(f"  目标 {i}: 距离={r}m, 速度={v}m/s, RCS={rc}dBsm")
     
     # Step 2: 创建仿真器并执行仿真
     print(f"\n[2/4] 执行 {waveform_type.upper()} 波形仿真...")
@@ -163,20 +166,25 @@ def main():
     
     # 与真实目标对比
     true_target = sim_result.target_info['targets'][0]
-    range_error = abs(detected_range - true_target['range'])
-    velocity_error = abs(detected_velocity - true_target['velocity'])
+    if isinstance(true_target, Target):
+        true_range, true_velocity = true_target.range, true_target.velocity
+    else:
+        true_range = true_target['range']
+        true_velocity = true_target['velocity']
+    range_error = abs(detected_range - true_range)
+    velocity_error = abs(detected_velocity - true_velocity)
     
     # 检查是否发生多普勒混叠
-    is_aliased = abs(true_target['velocity']) > max_unambiguous_velocity
+    is_aliased = abs(true_velocity) > max_unambiguous_velocity
     
     print(f"\n  与真实目标对比 (目标 1):")
-    print(f"    - 真实距离: {true_target['range']:.2f} m")
-    print(f"    - 真实速度: {true_target['velocity']:.2f} m/s")
+    print(f"    - 真实距离: {true_range:.2f} m")
+    print(f"    - 真实速度: {true_velocity:.2f} m/s")
     print(f"    - 距离误差: {range_error:.2f} m")
     print(f"    - 速度误差: {velocity_error:.2f} m/s")
     
     if is_aliased:
-        print(f"\n  ⚠ 注意：目标速度 ({true_target['velocity']:.2f} m/s) 超过最大不模糊速度 ({max_unambiguous_velocity:.2f} m/s)")
+        print(f"\n  ⚠ 注意：目标速度 ({true_velocity:.2f} m/s) 超过最大不模糊速度 ({max_unambiguous_velocity:.2f} m/s)")
         print(f"     发生了多普勒混叠！检测到的速度是模糊后的值。")
         print(f"     建议：降低目标速度或提高 PRF 参数以避免混叠。")
     

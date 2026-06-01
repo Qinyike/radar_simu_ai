@@ -15,8 +15,9 @@ if __name__ == "__main__":
 from typing import Optional
 
 import numpy as np
-from contracts import SimResult
+from contracts import SimResult, Target, RadarConfig, _normalize_targets
 from utils.noise import add_awgn
+from utils.physics import rcs_to_amplitude, compute_doppler_frequency
 
 
 class LfmcwSimulator:
@@ -45,6 +46,9 @@ class LfmcwSimulator:
         num_chirps: int = 256,      # 256 个 chirps → 速度分辨率 ~0.15 m/s
         c: float = 3e8              # 光速
     ):
+        if fc <= 0 or bandwidth <= 0 or fs <= 0 or prf <= 0 or num_chirps <= 0 or c <= 0:
+            raise ValueError("雷达参数必须为正数")
+
         self.fc = fc
         self.bandwidth = bandwidth
         self.chirp_duration = chirp_duration
@@ -59,7 +63,7 @@ class LfmcwSimulator:
     
     def simulate(
         self,
-        targets: list[dict],
+        targets: list,
         snr_db: float = 20.0,
         seed: Optional[int] = None
     ) -> SimResult:
@@ -67,10 +71,7 @@ class LfmcwSimulator:
         执行 LFMCW 雷达仿真
         
         Args:
-            targets: 目标列表，每个目标为字典，包含：
-                - range: 距离 (米)
-                - velocity: 径向速度 (米/秒)，远离雷达为正
-                - rcs: 雷达截面积 (dBsm)，可选，默认 0
+            targets: 目标列表 (list[Target] 或 list[dict])
             snr_db: 信噪比 (dB)
             seed: 随机数种子，用于可重现性
             
@@ -79,6 +80,8 @@ class LfmcwSimulator:
         """
         if not targets:
             raise ValueError("目标列表不能为空")
+
+        targets = _normalize_targets(targets)
 
         if seed is not None:
             rng = np.random.default_rng(seed)
@@ -97,18 +100,15 @@ class LfmcwSimulator:
         
         # 对每个目标生成回波
         for target in targets:
-            R = target['range']       # 距离 (m)
-            v = target['velocity']    # 速度 (m/s)
-            rcs = target.get('rcs', 0)  # RCS (dBsm)
-            
-            # 计算时延和多普勒频移
-            tau = 2 * R / self.c  # 双程时延
+            R = target.range
+            v = target.velocity
+            rcs = target.rcs
             
             # 多普勒频率
-            f_doppler = 2 * v * self.fc / self.c
+            f_doppler = compute_doppler_frequency(v, self.fc, self.c)
             
-            # 目标幅度（考虑 RCS）
-            amplitude = 10 ** (rcs / 20.0)
+            # 目标幅度
+            amplitude = rcs_to_amplitude(rcs)
             
             # 生成回波信号
             for n in range(num_chirps):
@@ -116,25 +116,21 @@ class LfmcwSimulator:
                 R_n = R + v * t_slow[n]
                 tau_n = 2 * R_n / self.c
                 
-                # Chirp 信号（去斜后的基带信号）
                 # 差频频率：f_beat = slope * tau
                 f_beat = self.chirp_slope * tau_n
                 
-                # 相位项包含两部分：
-                # 1. 快时间维度：差频导致的相位
-                # 2. 慢时间维度：多普勒导致的相位变化
+                # 相位项
                 phase_fast = 2 * np.pi * f_beat * t_fast
                 phase_slow = 2 * np.pi * f_doppler * t_slow[n]
                 phase = phase_fast + phase_slow
                 
-                # 累加目标回波
                 baseband[0, n, :] += amplitude * np.exp(1j * phase)
         
         # 添加噪声
         baseband = add_awgn(baseband, snr_db, rng=rng)
         
         # 构建仿真结果
-        sim_result = SimResult(
+        return SimResult(
             name="lfmcw",
             baseband=baseband,
             fc=self.fc,
@@ -146,8 +142,6 @@ class LfmcwSimulator:
             c=self.c,
             target_info={"targets": targets, "snr_db": snr_db}
         )
-        
-        return sim_result
 
 
 # 便捷函数：创建默认的汽车雷达 LFMCW 仿真器

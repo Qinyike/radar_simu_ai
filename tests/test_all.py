@@ -2,13 +2,15 @@
 单元测试 - 全模块覆盖
 
 覆盖：
-1. 契约验证 (SimResult, ProcessedResult)
+1. 契约验证 (SimResult, ProcessedResult, Target, RadarConfig)
 2. LFMCW 端到端
 3. MIMO TDMA 端到端
-4. PMCW 端到端
-5. 窗函数工具
-6. 注册表
-7. 公共工具 (noise, axes)
+4. MIMO DDMA 端到端
+5. PMCW 端到端
+6. 窗函数工具
+7. 注册表
+8. 公共工具 (noise, axes, physics)
+9. 参数校验
 """
 
 import sys
@@ -16,7 +18,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
-from contracts import SimResult, ProcessedResult
+from contracts import SimResult, ProcessedResult, Target, RadarConfig
 
 
 passed = 0
@@ -53,6 +55,47 @@ def test_processed_result():
                          range_axis=np.arange(100) * 1.0,
                          doppler_axis=np.linspace(-5, 5, 64))
     assert pr.range_doppler.shape == (100, 64)
+
+
+def test_target():
+    t = Target(range=50.0, velocity=3.0, rcs=10, angle=0.1)
+    assert t.range == 50.0
+    assert t.velocity == 3.0
+    assert t.rcs == 10
+    assert t.angle == 0.1
+    # 默认值
+    t2 = Target(range=100.0, velocity=0.0)
+    assert t2.rcs == 0.0
+    assert t2.angle == 0.0
+    # 负数range应报错
+    try:
+        Target(range=-1, velocity=0)
+        assert False
+    except ValueError:
+        pass
+
+
+def test_radar_config():
+    rc = RadarConfig(fc=77e9, bandwidth=150e6, fs=20e6, prf=20e3, num_chirps=256)
+    assert rc.fc == 77e9
+    # 负数参数应报错
+    try:
+        RadarConfig(fc=-1)
+        assert False
+    except ValueError:
+        pass
+
+
+def test_normalize_targets():
+    from contracts import _normalize_targets
+    dict_targets = [{"range": 50.0, "velocity": 3.0, "rcs": 10}]
+    normalized = _normalize_targets(dict_targets)
+    assert isinstance(normalized[0], Target)
+    assert normalized[0].range == 50.0
+    # 混合 Target 和 dict
+    mixed = [Target(range=30.0, velocity=1.0), {"range": 50.0, "velocity": 3.0}]
+    normalized2 = _normalize_targets(mixed)
+    assert all(isinstance(t, Target) for t in normalized2)
 
 
 # ============================================================
@@ -97,6 +140,26 @@ def test_mimo_tdma_e2e():
     dbf = mimo_dbf_angle_estimation(pr)
     assert 'angle_spectrum' in dbf
     assert len(dbf['detected_angles']) > 0
+
+
+def test_mimo_ddma_e2e():
+    import numpy as np
+    from contracts import MimoAntennaArray
+    from simulators.mimo_simulator import MimoLfmcwSimulator
+    from processors.mimo_processor import process_mimo_ddma
+
+    arr = MimoAntennaArray(num_tx=4, num_rx=4, fc=77e9)
+    sim = MimoLfmcwSimulator(antenna_array=arr, waveform_mode='ddma',
+                             fc=77e9, bandwidth=150e6, chirp_duration=40e-6,
+                             fs=20e6, prf=20e3, num_chirps_per_frame=128)
+    targets = [{"range": 50.0, "velocity": 5.0, "angle": np.radians(5), "rcs": 10}]
+    sr = sim.simulate(targets, snr_db=25.0, seed=42)
+    assert sr.name == "mimo_ddma"
+    assert sr.baseband.shape[0] == 4
+
+    pr = process_mimo_ddma(sr)
+    assert pr.range_doppler.ndim == 2
+    assert 'ddma_codes' in sr.target_info
 
 
 # ============================================================
@@ -190,6 +253,45 @@ def test_compute_axes():
     assert len(edges) == 11
 
 
+def test_physics_utils():
+    from utils.physics import (
+        rcs_to_amplitude, compute_doppler_frequency,
+        wrap_velocity, compute_max_unambiguous_velocity
+    )
+    assert abs(rcs_to_amplitude(0) - 1.0) < 1e-10
+    assert rcs_to_amplitude(-20) < 1.0
+
+    fd = compute_doppler_frequency(30.0, 77e9)
+    assert fd > 0  # 约 15.4 kHz
+
+    vmax = compute_max_unambiguous_velocity(20e3, 77e9)
+    assert vmax > 0  # 约 19.5 m/s
+
+    v_wrapped = wrap_velocity(30.0, 20.0)
+    assert -20.0 <= v_wrapped <= 20.0
+    v_ok = wrap_velocity(5.0, 20.0)
+    assert v_ok == 5.0
+
+
+def test_empty_targets_validation():
+    from simulators import get_simulator
+    sim = get_simulator("lfmcw")
+    try:
+        sim.simulate(targets=[])
+        assert False
+    except ValueError:
+        pass
+
+
+def test_simulator_param_validation():
+    from simulators.lfmcw_simulator import LfmcwSimulator
+    try:
+        LfmcwSimulator(fc=0)
+        assert False
+    except ValueError:
+        pass
+
+
 # ============================================================
 # 运行
 # ============================================================
@@ -200,14 +302,21 @@ if __name__ == "__main__":
 
     run_test("SimResult 契约", test_sim_result)
     run_test("ProcessedResult 契约", test_processed_result)
+    run_test("Target 数据类", test_target)
+    run_test("RadarConfig 数据类", test_radar_config)
+    run_test("目标归一化", test_normalize_targets)
     run_test("LFMCW 端到端", test_lfmcw_e2e)
     run_test("MIMO TDMA 端到端", test_mimo_tdma_e2e)
+    run_test("MIMO DDMA 端到端", test_mimo_ddma_e2e)
     run_test("PMCW 端到端", test_pmcw_e2e)
     run_test("窗函数工具", test_window_utils)
     run_test("仿真器注册表", test_simulator_registry)
     run_test("处理器注册表", test_processor_registry)
     run_test("add_awgn", test_add_awgn)
     run_test("坐标轴工具", test_compute_axes)
+    run_test("物理工具函数", test_physics_utils)
+    run_test("空目标校验", test_empty_targets_validation)
+    run_test("仿真器参数校验", test_simulator_param_validation)
 
     print("\n" + "=" * 70)
     if failed == 0:

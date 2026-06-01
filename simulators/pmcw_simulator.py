@@ -25,8 +25,9 @@ if __name__ == "__main__":
 
 from typing import Optional
 import numpy as np
-from contracts import SimResult
+from contracts import SimResult, _normalize_targets
 from utils.noise import add_awgn
+from utils.physics import rcs_to_amplitude, compute_doppler_frequency
 
 
 def generate_barker_code(length: int) -> np.ndarray:
@@ -129,6 +130,9 @@ class PmcwSimulator:
         num_pulses: int = 256,
         c: float = 3e8
     ):
+        if fc <= 0 or chip_rate <= 0 or code_length <= 0 or pri <= 0 or num_pulses <= 0:
+            raise ValueError("雷达参数必须为正数")
+
         self.fc = fc
         self.chip_rate = chip_rate
         self.code = generate_pmcw_code(code_type, code_length)
@@ -152,7 +156,7 @@ class PmcwSimulator:
 
     def simulate(
         self,
-        targets: list[dict],
+        targets: list,
         snr_db: float = 20.0,
         seed: Optional[int] = None
     ) -> SimResult:
@@ -160,7 +164,7 @@ class PmcwSimulator:
         执行 PMCW 雷达仿真
 
         Args:
-            targets: 目标列表，每个目标含 range/velocity/rcs
+            targets: 目标列表 (list[Target] 或 list[dict])
             snr_db: 信噪比 (dB)
             seed: 随机种子
 
@@ -169,6 +173,8 @@ class PmcwSimulator:
         """
         if not targets:
             raise ValueError("目标列表不能为空")
+
+        targets = _normalize_targets(targets)
 
         if seed is not None:
             rng = np.random.default_rng(seed)
@@ -184,11 +190,11 @@ class PmcwSimulator:
         t_pulse = np.arange(P) * self.pri
 
         for target in targets:
-            R = target['range']
-            v = target['velocity']
-            rcs = target.get('rcs', 0)
-            amplitude = 10 ** (rcs / 20.0)
-            fd = 2 * v * self.fc / self.c
+            R = target.range
+            v = target.velocity
+            rcs = target.rcs
+            amplitude = rcs_to_amplitude(rcs)
+            fd = compute_doppler_frequency(v, self.fc, self.c)
 
             for n in range(P):
                 R_n = R + v * t_pulse[n]

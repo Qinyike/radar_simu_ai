@@ -18,8 +18,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Cursor
-from contracts import ProcessedResult
+from contracts import ProcessedResult, Target
 from utils.axes import compute_edges
+from utils.physics import wrap_velocity
+
+
+def _get_target_attr(target, key, default=None):
+    if isinstance(target, Target):
+        return getattr(target, key, default)
+    return target.get(key, default) if isinstance(target, dict) else getattr(target, key, default)
 
 
 class InteractiveRDPlot:
@@ -119,10 +126,10 @@ class InteractiveRDPlot:
         colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6']
 
         for i, t in enumerate(self.target_info['targets']):
-            R = t['range']
-            V = t.get('velocity', 0)
+            R = _get_target_attr(t, 'range')
+            V = _get_target_attr(t, 'velocity', 0)
             # 多普勒模糊
-            V_wrapped = ((V + max_v) % (2 * max_v)) - max_v
+            V_wrapped = wrap_velocity(V, max_v)
             m = markers[i % len(markers)]
             c = colors[i % len(colors)]
             self.ax.plot(R, V_wrapped, marker=m, color=c,
@@ -334,9 +341,9 @@ def plot_comparison_interactive(
     if target_info and 'targets' in target_info:
         max_v = abs(d_ax[-1])
         for i, t in enumerate(target_info['targets']):
-            v_wrapped = ((t['velocity'] + max_v) % (2 * max_v)) - max_v
+            v_wrapped = wrap_velocity(_get_target_attr(t, 'velocity'), max_v)
             for ax in [ax1, ax2]:
-                ax.plot(t['range'], v_wrapped, 'w+', markersize=12,
+                ax.plot(_get_target_attr(t, 'range'), v_wrapped, 'w+', markersize=12,
                         markeredgewidth=2)
 
     fig.suptitle(title, fontsize=15, fontweight='bold', y=1.01)

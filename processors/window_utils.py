@@ -15,7 +15,18 @@
 """
 
 import numpy as np
-from scipy.signal.windows import kaiser
+
+
+def _kaiser(N: int, beta: float) -> np.ndarray:
+    """Kaiser 窗（惰性导入 scipy）"""
+    try:
+        from scipy.signal.windows import kaiser as _scipy_kaiser
+    except ImportError:
+        raise ImportError(
+            "kaiser 窗需要 scipy 库。请安装: pip install scipy，"
+            "或使用 'taylor' 窗作为替代。"
+        )
+    return _scipy_kaiser(N, beta=beta)
 
 
 def _taylor(N: int, nbar: int = 4, sll: float = -35) -> np.ndarray:
@@ -90,7 +101,7 @@ def get_window(name: str, N: int, **kwargs) -> np.ndarray:
         return _taylor(N, nbar=nbar, sll=sll)
     elif name == 'kaiser':
         beta = kwargs.get('beta', 8.6)
-        return kaiser(N, beta=beta)
+        return _kaiser(N, beta=beta)
     elif name in ('none', 'rect', 'rectangular'):
         return np.ones(N)
     else:

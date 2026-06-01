@@ -14,8 +14,9 @@ if __name__ == "__main__":
 
 from typing import Optional, List
 import numpy as np
-from contracts import SimResult, MimoAntennaArray
+from contracts import SimResult, MimoAntennaArray, _normalize_targets
 from utils.noise import add_awgn
+from utils.physics import rcs_to_amplitude, compute_doppler_frequency, compute_max_unambiguous_velocity
 
 
 class MimoLfmcwSimulator:
@@ -48,6 +49,9 @@ class MimoLfmcwSimulator:
         num_chirps_per_frame: int = 128,
         c: float = 3e8
     ):
+        if fc <= 0 or bandwidth <= 0 or fs <= 0 or prf <= 0 or num_chirps_per_frame <= 0:
+            raise ValueError("雷达参数必须为正数")
+
         # 默认使用 4T4R 配置
         if antenna_array is None:
             self.antenna_array = MimoAntennaArray(num_tx=4, num_rx=4, fc=fc, c=c)
@@ -69,12 +73,11 @@ class MimoLfmcwSimulator:
         self.chirp_slope = bandwidth / chirp_duration
         
         # 计算最大不模糊速度
-        # TDMA 模式下有效 PRF = prf / num_tx
         if self.waveform_mode == 'tdma':
             effective_prf = self.prf / self.antenna_array.num_tx
         else:
             effective_prf = self.prf
-        self.max_unambiguous_velocity = self.c * effective_prf / (4 * self.fc)
+        self.max_unambiguous_velocity = compute_max_unambiguous_velocity(effective_prf, self.fc, self.c)
         
     def _calculate_target_beat(
         self,
@@ -113,7 +116,7 @@ class MimoLfmcwSimulator:
         f_beat = self.chirp_slope * tau_n
 
         # 多普勒频率: fd = 2v*fc/c
-        f_doppler = 2 * target_velocity * self.fc / self.c
+        f_doppler = compute_doppler_frequency(target_velocity, self.fc, self.c)
 
         # 天线相位（导向矢量）
         tx_position = tx_antenna_idx * self.antenna_array.tx_spacing
@@ -122,7 +125,7 @@ class MimoLfmcwSimulator:
         phase_angle = k_wave * (tx_position + rx_position) * np.sin(target_angle)
 
         # 目标幅度
-        amplitude = 10 ** (target_rcs / 20.0)
+        amplitude = rcs_to_amplitude(target_rcs)
 
         # 差拍信号相位
         phase_fast = 2 * np.pi * f_beat * t_fast
@@ -132,15 +135,15 @@ class MimoLfmcwSimulator:
     
     def simulate_tdma(
         self,
-        targets: List[dict],
-        snr_db: float = 25.0,
+        targets: List,
+        snr_db: float = 20.0,
         seed: Optional[int] = None
     ) -> SimResult:
         """
         TDMA MIMO 仿真
         
         Args:
-            targets: 目标列表，每个目标包含 {'range', 'velocity', 'angle', 'rcs'}
+            targets: 目标列表 (list[Target] 或 list[dict])
             snr_db: 信噪比 (dB)
             seed: 随机种子
             
@@ -149,6 +152,8 @@ class MimoLfmcwSimulator:
         """
         if not targets:
             raise ValueError("目标列表不能为空")
+
+        targets = _normalize_targets(targets)
 
         if seed is not None:
             rng = np.random.default_rng(seed)
@@ -178,10 +183,10 @@ class MimoLfmcwSimulator:
                 # 对所有 RX 天线计算独立回波（含不同天线相位）
                 for rx_idx in range(num_rx):
                     beat = self._calculate_target_beat(
-                        target['range'],
-                        target['velocity'],
-                        target['angle'],
-                        target['rcs'],
+                        target.range,
+                        target.velocity,
+                        target.angle,
+                        target.rcs,
                         tx_antenna_idx,
                         rx_idx,
                         chirp_idx,
@@ -216,15 +221,15 @@ class MimoLfmcwSimulator:
     
     def simulate_ddma(
         self,
-        targets: List[dict],
-        snr_db: float = 25.0,
+        targets: List,
+        snr_db: float = 20.0,
         seed: Optional[int] = None
     ) -> SimResult:
         """
         DDMA MIMO 仿真
         
         Args:
-            targets: 目标列表，每个目标包含 {'range', 'velocity', 'angle', 'rcs'}
+            targets: 目标列表 (list[Target] 或 list[dict])
             snr_db: 信噪比 (dB)
             seed: 随机种子
             
@@ -233,6 +238,8 @@ class MimoLfmcwSimulator:
         """
         if not targets:
             raise ValueError("目标列表不能为空")
+
+        targets = _normalize_targets(targets)
 
         if seed is not None:
             rng = np.random.default_rng(seed)
@@ -270,10 +277,10 @@ class MimoLfmcwSimulator:
                         phase_code = ddma_codes[tx_idx, chirp_idx]
                         
                         beat = self._calculate_target_beat(
-                            target['range'],
-                            target['velocity'],
-                            target['angle'],
-                            target['rcs'],
+                            target.range,
+                            target.velocity,
+                            target.angle,
+                            target.rcs,
                             tx_idx,
                             rx_idx,
                             chirp_idx,
@@ -334,8 +341,8 @@ class MimoLfmcwSimulator:
     
     def simulate(
         self,
-        targets: List[dict],
-        snr_db: float = 25.0,
+        targets: List,
+        snr_db: float = 20.0,
         seed: Optional[int] = None
     ) -> SimResult:
         """
@@ -359,21 +366,6 @@ class MimoLfmcwSimulator:
             return self.simulate_ddma(targets, snr_db, seed)
         else:
             raise ValueError(f"不支持的波形模式: {self.waveform_mode}")
-
-
-def dbf_angle_estimation(
-    rd_spectrum: np.ndarray,
-    antenna_array: MimoAntennaArray,
-    doppler_axis: np.ndarray,
-    range_axis: np.ndarray,
-    angle_search_range: tuple = (-np.pi/3, np.pi/3),
-    angle_resolution: float = np.pi/180,
-    angle_window: str = 'taylor'
-) -> dict:
-    """DBF 角度估计（已移至 processors.mimo_processor，保留向后兼容）"""
-    from processors.mimo_processor import dbf_angle_estimation as _dbf
-    return _dbf(rd_spectrum, antenna_array, doppler_axis, range_axis,
-                angle_search_range, angle_resolution, angle_window)
 
 
 if __name__ == "__main__":
