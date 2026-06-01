@@ -1,0 +1,73 @@
+[33mcommit e4c6c7f5a1e1efba74073641dd3a54c618f0377f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: zenghui.li <>
+Date:   Mon Jun 1 23:57:25 2026 +0800
+
+    feat: 完成雷达仿真框架核心功能和可视化改进
+    
+    主要更新：
+    
+    1. 核心功能实现
+    - 完整的分层架构（契约层、仿真层、处理层、可视化层、调度层）
+    - LFMCW 波形仿真器，支持多目标场景
+    - 2D-FFT 信号处理流程（距离 FFT + 多普勒 FFT）
+    - 距离-多普勒谱可视化工具
+    
+    2. 可视化重大改进
+    - 修复 RD 谱空白问题：使用 pcolormesh 替代 contourf
+    - 添加多普勒模糊位置标注：wrap_velocity() 函数计算模糊后的速度
+    - 多目标差异化标注：10种颜色和标记样式自动分配
+    - 智能图例生成：清晰显示每个目标的编号、距离、速度和模糊状态
+    - 虚线箭头连接真实位置和模糊位置，帮助理解混叠现象
+    
+    3. 教程和示例系统
+    - 创建完整教程文档 (TUTORIAL.md)
+    - 7个实用示例覆盖从基础到高级的所有场景
+    - Windows/Linux/Mac 便捷运行脚本
+    - 快速参考卡片 (QUICK_REFERENCE.md)
+    
+    4. 测试验证
+    - 所有单元测试通过
+    - 物理验证：距离误差 0.00m，速度误差 < 0.03m/s
+    - 多目标和多普勒模糊可视化测试通过
+    
+    技术亮点：
+    - 单向数据流设计
+    - 注册表模式便于扩展
+    - 契约驱动开发
+    - Pixi 环境管理
+
+ .gitattributes                            |    2 [32m+[m
+ .gitignore                                |   57 [32m++[m
+ EXAMPLES_SUMMARY.md                       |  332 [32m+++++++[m
+ PROJECT_SUMMARY.md                        |  229 [32m+++++[m
+ QUICK_REFERENCE.md                        |  198 [32m+++++[m
+ README.md                                 |  231 [32m+++++[m
+ TUTORIAL.md                               |  318 [32m+++++++[m
+ VISUALIZATION_IMPROVEMENTS.md             |  277 [32m++++++[m
+ base_rule.md                              |   54 [32m++[m
+ contracts.py                              |   99 [32m+++[m
+ debug_signal_model.py                     |   44 [32m+[m
+ examples/README.md                        |  257 [32m++++++[m
+ examples/example1_basic.py                |   40 [32m+[m
+ examples/example2_multi_target.py         |   87 [32m++[m
+ examples/example3_parameter_tuning.py     |  171 [32m++++[m
+ examples/example4_snr_analysis.py         |  144 [32m+++[m
+ examples/example5_custom_visualization.py |  158 [32m++++[m
+ examples/example6_batch_simulation.py     |  163 [32m++++[m
+ examples/example7_doppler_aliasing.py     |  191 [32m++++[m
+ main.py                                   |  181 [32m++++[m
+ pixi.lock                                 | 1354 [32m+++++++++++++++++++++++++++++[m
+ pixi.toml                                 |   20 [32m+[m
+ processors/__init__.py                    |   40 [32m+[m
+ processors/lfmcw_processor.py             |  189 [32m++++[m
+ run_examples.bat                          |   96 [32m++[m
+ run_examples.sh                           |   57 [32m++[m
+ simple_test.py                            |   47 [32m+[m
+ simulators/__init__.py                    |   40 [32m+[m
+ simulators/lfmcw_simulator.py             |  173 [32m++++[m
+ test_multi_target_annotation.py           |   96 [32m++[m
+ tests/__init__.py                         |    3 [32m+[m
+ tests/test_contracts.py                   |  225 [32m+++++[m
+ visualizers/__init__.py                   |    9 [32m+[m
+ visualizers/rd_visualizer.py              |  280 [32m++++++[m
+ 34 files changed, 5862 insertions(+)

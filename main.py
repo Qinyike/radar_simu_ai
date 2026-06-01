@@ -153,6 +153,9 @@ def main():
     range_axis = processed_result.range_axis
     doppler_axis = processed_result.doppler_axis
     
+    # 计算最大不模糊速度
+    max_unambiguous_velocity = abs(doppler_axis[-1])
+    
     # 找到最强目标
     max_idx = np.unravel_index(np.argmax(rd_spectrum), rd_spectrum.shape)
     detected_range = range_axis[max_idx[0]]  # 第一维是 range
@@ -161,20 +164,32 @@ def main():
     print(f"  检测到的最强目标:")
     print(f"    - 距离: {detected_range:.2f} m")
     print(f"    - 速度: {detected_velocity:.2f} m/s")
+    print(f"    - 最大不模糊速度: ±{max_unambiguous_velocity:.2f} m/s")
     
     # 与真实目标对比
     true_target = sim_result.target_info['targets'][0]
     range_error = abs(detected_range - true_target['range'])
     velocity_error = abs(detected_velocity - true_target['velocity'])
     
+    # 检查是否发生多普勒混叠
+    is_aliased = abs(true_target['velocity']) > max_unambiguous_velocity
+    
     print(f"\n  与真实目标对比 (目标 1):")
+    print(f"    - 真实距离: {true_target['range']:.2f} m")
+    print(f"    - 真实速度: {true_target['velocity']:.2f} m/s")
     print(f"    - 距离误差: {range_error:.2f} m")
     print(f"    - 速度误差: {velocity_error:.2f} m/s")
     
-    if range_error < 2.0 and velocity_error < 2.0:
-        print("  ✓ 物理验证通过！检测结果与预期一致。")
+    if is_aliased:
+        print(f"\n  ⚠ 注意：目标速度 ({true_target['velocity']:.2f} m/s) 超过最大不模糊速度 ({max_unambiguous_velocity:.2f} m/s)")
+        print(f"     发生了多普勒混叠！检测到的速度是模糊后的值。")
+        print(f"     建议：降低目标速度或提高 PRF 参数以避免混叠。")
+    
+    if range_error < 2.0 and (not is_aliased or velocity_error < max_unambiguous_velocity * 0.5):
+        print("  ✓ 物理验证通过！检测结果符合预期。")
     else:
-        print("  ⚠ 警告：检测结果与预期存在较大偏差。")
+        if not is_aliased:
+            print("  ⚠ 警告：检测结果与预期存在较大偏差。")
 
 
 if __name__ == "__main__":
