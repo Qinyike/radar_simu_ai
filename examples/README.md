@@ -114,8 +114,40 @@ pixi run python examples/example7_doppler_aliasing.py
 - ✅ 10种不同的标记样式和颜色
 - ✅ 智能图例生成
 - ✅ 模糊位置对比图
+---
+
+### 示例 9: MIMO TDMA 仿真 (`example9_mimo_tdma.py`)
+**适合人群**: 雷达工程师/研究人员  
+**学习目标**: MIMO 雷达角度测量
+
+```bash
+pixi run python examples/example9_mimo_tdma.py
+```
+
+**主要内容**:
+- 4T4R MIMO 天线阵列配置
+- TDMA（时分多址）波形仿真
+- DBF（数字波束形成）角度估计
+- 高速公路典型场景（前车/旁车道/天桥）
 
 ---
+
+### 示例 10: MIMO DDMA 仿真 (`example10_mimo_ddma.py`)
+**适合人群**: 雷达工程师/研究人员  
+**学习目标**: DDMA 波形与 TDMA 的区别
+
+```bash
+pixi run python examples/example10_mimo_ddma.py
+```
+
+**主要内容**:
+- DDMA（相位编码）波形仿真
+- 有效 PRF = PRF（不模糊速度是 TDMA 的 4 倍）
+- 大速度目标场景（高速公路相对速度）
+- TDMA vs DDMA 对比
+
+---
+
 ## 🚀 快速开始
 
 ### 第一步：运行基础示例

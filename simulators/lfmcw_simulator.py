@@ -37,11 +37,11 @@ class LfmcwSimulator:
     def __init__(
         self,
         fc: float = 77e9,          # 77 GHz 汽车雷达
-        bandwidth: float = 150e6,   # 150 MHz 带宽
-        chirp_duration: float = 50e-6,  # 50 μs chirp 持续时间
-        fs: float = 10e6,           # 10 MHz 采样率
-        prf: float = 5e3,           # 5 kHz PRF
-        num_chirps: int = 128,      # 128 个 chirps
+        bandwidth: float = 150e6,   # 150 MHz 带宽 → 距离分辨率 1.0 m
+        chirp_duration: float = 40e-6,  # 40 μs chirp 持续时间
+        fs: float = 20e6,           # 20 MHz 采样率 → 800 采样点/chirp
+        prf: float = 20e3,          # 20 kHz PRF → chirp 周期 50 μs
+        num_chirps: int = 256,      # 256 个 chirps → 速度分辨率 ~0.15 m/s
         c: float = 3e8              # 光速
     ):
         self.fc = fc
@@ -164,10 +164,10 @@ def create_automotive_lfmcw_simulator(**kwargs) -> LfmcwSimulator:
     default_params = {
         'fc': 77e9,
         'bandwidth': 150e6,
-        'chirp_duration': 50e-6,
-        'fs': 10e6,
-        'prf': 5e3,
-        'num_chirps': 128,
+        'chirp_duration': 40e-6,
+        'fs': 20e6,
+        'prf': 20e3,
+        'num_chirps': 256,
     }
     default_params.update(kwargs)
     return LfmcwSimulator(**default_params)

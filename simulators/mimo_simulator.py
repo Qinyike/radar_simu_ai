@@ -45,9 +45,9 @@ class MimoAntennaArray:
         self.num_rx = num_rx
         self.wavelength = c / fc
         
-        # 默认天线间距为半波长
+        # 默认天线间距：RX 半波长，TX 为 N_rx 倍半波长（形成均匀虚拟阵列）
         if tx_spacing is None:
-            self.tx_spacing = self.wavelength / 2
+            self.tx_spacing = num_rx * self.wavelength / 2
         else:
             self.tx_spacing = tx_spacing
             
@@ -120,9 +120,9 @@ class MimoLfmcwSimulator:
         waveform_mode: str = 'tdma',
         fc: float = 77e9,
         bandwidth: float = 150e6,
-        chirp_duration: float = 50e-6,
-        fs: float = 10e6,
-        prf: float = 5e3,
+        chirp_duration: float = 40e-6,
+        fs: float = 20e6,
+        prf: float = 20e3,
         num_chirps_per_frame: int = 128,
         c: float = 3e8
     ):
@@ -144,26 +144,17 @@ class MimoLfmcwSimulator:
         self.num_chirps_per_frame = num_chirps_per_frame
         self.c = c
         self.wavelength = c / fc
+        self.chirp_slope = bandwidth / chirp_duration
         
         # 计算最大不模糊速度
-        self.max_unambiguous_velocity = self.c * self.prf / (4 * self.fc)
+        # TDMA 模式下有效 PRF = prf / num_tx
+        if self.waveform_mode == 'tdma':
+            effective_prf = self.prf / self.antenna_array.num_tx
+        else:
+            effective_prf = self.prf
+        self.max_unambiguous_velocity = self.c * effective_prf / (4 * self.fc)
         
-    def _generate_chirp_signal(self, t: np.ndarray) -> np.ndarray:
-        """
-        生成单个 chirp 信号
-        
-        Args:
-            t: 时间向量
-            
-        Returns:
-            chirp: chirp 信号
-        """
-        # LFMCW chirp: s(t) = exp(j * 2π * (fc*t + K*t²/2))
-        K = self.bandwidth / self.chirp_duration  # 调频斜率
-        phase = 2 * np.pi * (self.fc * t + 0.5 * K * t**2)
-        return np.exp(1j * phase)
-    
-    def _calculate_target_echo(
+    def _calculate_target_beat(
         self,
         target_range: float,
         target_velocity: float,
@@ -171,11 +162,14 @@ class MimoLfmcwSimulator:
         target_rcs: float,
         tx_antenna_idx: int,
         rx_antenna_idx: int,
-        t: np.ndarray
+        chirp_idx: int,
+        t_fast: np.ndarray,
     ) -> np.ndarray:
         """
-        计算单个目标的回波信号
-        
+        计算单个目标的差拍信号（beat signal）
+
+        生成的是去斜（dechirp）后的基带差拍信号，与 LFMCW 处理器兼容。
+
         Args:
             target_range: 目标距离 (m)
             target_velocity: 目标速度 (m/s)
@@ -183,45 +177,36 @@ class MimoLfmcwSimulator:
             target_rcs: 目标 RCS (dBsm)
             tx_antenna_idx: 发射天线索引
             rx_antenna_idx: 接收天线索引
-            t: 时间向量
-            
+            chirp_idx: chirp 序号（慢时间索引）
+            t_fast: 快时间向量（chirp 内采样时间）
+
         Returns:
-            echo: 回波信号
+            beat: 差拍信号
         """
-        # 计算往返时延
-        tau = 2 * target_range / self.c
-        
-        # 计算多普勒频移
-        fd = 2 * target_velocity / self.wavelength
-        
-        # 计算相位差（基于天线位置）
+        # 考虑目标运动引起的距离变化
+        R_n = target_range + target_velocity * chirp_idx / self.prf
+        tau_n = 2 * R_n / self.c
+
+        # 差拍频率: f_beat = K * tau
+        f_beat = self.chirp_slope * tau_n
+
+        # 多普勒频率: fd = 2v*fc/c
+        f_doppler = 2 * target_velocity * self.fc / self.c
+
+        # 天线相位（导向矢量）
         tx_position = tx_antenna_idx * self.antenna_array.tx_spacing
         rx_position = rx_antenna_idx * self.antenna_array.rx_spacing
-        
-        # 导向矢量的相位项
-        k = 2 * np.pi / self.wavelength
-        phase_angle = k * (tx_position + rx_position) * np.sin(target_angle)
-        
-        # 生成发射信号
-        tx_signal = self._generate_chirp_signal(t)
-        
-        # 应用时延和多普勒
-        # 简化模型：假设时延远小于 chirp 持续时间
-        delayed_t = t - tau
-        valid_mask = delayed_t >= 0
-        
-        echo = np.zeros_like(tx_signal, dtype=np.complex128)
-        echo[valid_mask] = tx_signal[valid_mask] * np.exp(1j * 2 * np.pi * fd * t[valid_mask])
-        
-        # 应用角度相位和 RCS
-        rcs_linear = 10 ** (target_rcs / 10)  # 转换为线性值
-        echo *= np.sqrt(rcs_linear) * np.exp(1j * phase_angle)
-        
-        # 距离衰减（自由空间传播）
-        path_loss = (self.wavelength / (4 * np.pi * target_range)) ** 2
-        echo *= np.sqrt(path_loss)
-        
-        return echo
+        k_wave = 2 * np.pi / self.wavelength
+        phase_angle = k_wave * (tx_position + rx_position) * np.sin(target_angle)
+
+        # 目标幅度
+        amplitude = 10 ** (target_rcs / 20.0)
+
+        # 差拍信号相位
+        phase_fast = 2 * np.pi * f_beat * t_fast
+        phase_slow = 2 * np.pi * f_doppler * chirp_idx / self.prf
+
+        return amplitude * np.exp(1j * (phase_fast + phase_slow + phase_angle))
     
     def simulate_tdma(
         self,
@@ -252,8 +237,8 @@ class MimoLfmcwSimulator:
         # TDMA 需要 num_tx 倍的时间来遍历所有 TX
         total_chirps = self.num_chirps_per_frame * num_tx
         
-        # 时间向量
-        t = np.arange(num_samples) / self.fs
+        # 时间向量（快时间）
+        t_fast = np.arange(num_samples) / self.fs
         
         # 初始化接收数据 [num_rx, total_chirps, num_samples]
         rx_data = np.zeros((num_rx, total_chirps, num_samples), dtype=np.complex128)
@@ -265,19 +250,19 @@ class MimoLfmcwSimulator:
             
             # 累加所有目标的回波
             for target in targets:
-                echo = self._calculate_target_echo(
-                    target['range'],
-                    target['velocity'],
-                    target['angle'],
-                    target['rcs'],
-                    tx_antenna_idx,
-                    rx_antenna_idx=0,  # 这里先简化，后面会扩展到所有 RX
-                    t=t
-                )
-                
-                # 对所有 RX 天线添加回波（带不同的相位）
+                # 对所有 RX 天线计算独立回波（含不同天线相位）
                 for rx_idx in range(num_rx):
-                    rx_data[rx_idx, chirp_idx, :] += echo
+                    beat = self._calculate_target_beat(
+                        target['range'],
+                        target['velocity'],
+                        target['angle'],
+                        target['rcs'],
+                        tx_antenna_idx,
+                        rx_idx,
+                        chirp_idx,
+                        t_fast,
+                    )
+                    rx_data[rx_idx, chirp_idx, :] += beat
         
         # 添加噪声
         signal_power = np.mean(np.abs(rx_data)**2)
@@ -337,8 +322,8 @@ class MimoLfmcwSimulator:
         # DDMA: 所有 chirp 都使用
         total_chirps = self.num_chirps_per_frame
         
-        # 时间向量
-        t = np.arange(num_samples) / self.fs
+        # 时间向量（快时间）
+        t_fast = np.arange(num_samples) / self.fs
         
         # 初始化接收数据 [num_rx, total_chirps, num_samples]
         rx_data = np.zeros((num_rx, total_chirps, num_samples), dtype=np.complex128)
@@ -351,28 +336,29 @@ class MimoLfmcwSimulator:
         for chirp_idx in range(total_chirps):
             # 累加所有目标的回波
             for target in targets:
-                # 对所有 TX 天线求和（DDMA 同时发射）
-                combined_echo = np.zeros(num_samples, dtype=np.complex128)
-                
-                for tx_idx in range(num_tx):
-                    # 应用 DDMA 相位编码
-                    phase_code = ddma_codes[tx_idx, chirp_idx]
-                    
-                    echo = self._calculate_target_echo(
-                        target['range'],
-                        target['velocity'],
-                        target['angle'],
-                        target['rcs'],
-                        tx_idx,
-                        rx_antenna_idx=0,
-                        t=t
-                    )
-                    
-                    combined_echo += echo * phase_code
-                
-                # 对所有 RX 天线添加回波
+                # 对所有 RX 天线计算独立回波
                 for rx_idx in range(num_rx):
-                    rx_data[rx_idx, chirp_idx, :] += combined_echo
+                    combined_beat = np.zeros(num_samples, dtype=np.complex128)
+                    
+                    # 对所有 TX 天线求和（DDMA 同时发射）
+                    for tx_idx in range(num_tx):
+                        # 应用 DDMA 相位编码
+                        phase_code = ddma_codes[tx_idx, chirp_idx]
+                        
+                        beat = self._calculate_target_beat(
+                            target['range'],
+                            target['velocity'],
+                            target['angle'],
+                            target['rcs'],
+                            tx_idx,
+                            rx_idx,
+                            chirp_idx,
+                            t_fast,
+                        )
+                        
+                        combined_beat += beat * phase_code
+                    
+                    rx_data[rx_idx, chirp_idx, :] += combined_beat
         
         # 添加噪声
         signal_power = np.mean(np.abs(rx_data)**2)
@@ -398,7 +384,7 @@ class MimoLfmcwSimulator:
             bandwidth=self.bandwidth,
             fs=self.fs,
             prf=self.prf,
-            num_chirps=num_chirps,
+            num_chirps=total_chirps,
             samples_per_chirp=num_samples,
             c=self.c,
             target_info=target_info
@@ -461,7 +447,8 @@ def dbf_angle_estimation(
     doppler_axis: np.ndarray,
     range_axis: np.ndarray,
     angle_search_range: tuple = (-np.pi/3, np.pi/3),
-    angle_resolution: float = np.pi/180
+    angle_resolution: float = np.pi/180,
+    angle_window: str = 'taylor'
 ) -> dict:
     """
     DBF（数字波束形成）角度估计
@@ -475,6 +462,7 @@ def dbf_angle_estimation(
         range_axis: 距离轴
         angle_search_range: 角度搜索范围 (min, max)，单位：弧度
         angle_resolution: 角度分辨率，单位：弧度
+        angle_window: 虚拟阵列加窗类型（降低角度旁瓣）
         
     Returns:
         angle_spectrum: 角度谱 [range_bins, doppler_bins, angle_bins]
@@ -482,11 +470,16 @@ def dbf_angle_estimation(
     """
     num_range = len(range_axis)
     num_doppler = len(doppler_axis)
+    num_virtual = antenna_array.virtual_array_size
     
     # 生成角度搜索网格
     angles = np.arange(angle_search_range[0], angle_search_range[1] + angle_resolution, 
                        angle_resolution)
     num_angles = len(angles)
+    
+    # 虚拟阵列加窗（降低角度旁瓣）
+    from processors.window_utils import get_window
+    angle_win = get_window(angle_window, num_virtual)
     
     # 预计算所有角度的导向矢量 [num_angles, virtual_elements]
     steering_vectors = np.array([
@@ -499,12 +492,12 @@ def dbf_angle_estimation(
     # 对每个 RD 单元进行波束形成
     for r_idx in range(num_range):
         for d_idx in range(num_doppler):
-            # 获取该 RD 单元的虚拟阵列数据
-            virtual_data = rd_spectrum[r_idx, d_idx, :]  # [virtual_elements]
+            # 获取该 RD 单元的虚拟阵列数据并加窗
+            virtual_data = rd_spectrum[r_idx, d_idx, :] * angle_win  # [virtual_elements]
             
             # 对所有角度计算波束形成输出
             for a_idx, sv in enumerate(steering_vectors):
-                # DBF: w^H * x，其中 w 是导向矢量，x 是接收数据
+                # DBF: w^H * x，其中 w 是导向矢量，x 是加窗后的接收数据
                 beam_output = np.dot(np.conj(sv), virtual_data)
                 angle_spectrum[r_idx, d_idx, a_idx] = np.abs(beam_output)**2
     

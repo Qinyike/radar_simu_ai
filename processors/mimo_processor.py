@@ -19,12 +19,14 @@ from typing import Optional
 import numpy as np
 from contracts import ProcessedResult
 from simulators.mimo_simulator import MimoAntennaArray
+from processors.window_utils import get_window
 
 
 def process_mimo_tdma(
     sim_result,
     antenna_array: Optional[MimoAntennaArray] = None,
-    window_type: str = 'hamming'
+    window_type: str = 'taylor',
+    doppler_window: str = 'taylor'
 ) -> ProcessedResult:
     """
     处理 TDMA MIMO 数据
@@ -53,13 +55,17 @@ def process_mimo_tdma(
     
     # TDMA: 重构虚拟阵列
     # raw_data shape: [num_rx, num_tx * num_chirps_per_frame, num_samples]
+    # chirp 排列: [TX0, TX1, TX2, TX3, TX0, TX1, ...]
     total_chirps = raw_data.shape[1]
     num_chirps_per_frame = total_chirps // num_tx
     
-    # 重塑数据: [num_rx, num_tx, num_chirps_per_frame, num_samples]
-    rx_data_reshaped = raw_data.reshape(num_rx, num_tx, num_chirps_per_frame, num_samples)
+    # 重塑数据: [num_rx, num_chirps_per_frame, num_tx, num_samples]
+    # 然后转置为 [num_rx, num_tx, num_chirps_per_frame, num_samples]
+    rx_data_reshaped = raw_data.reshape(num_rx, num_chirps_per_frame, num_tx, num_samples)
+    rx_data_reshaped = rx_data_reshaped.transpose(0, 2, 1, 3)
     
     # 构建虚拟阵列数据 [virtual_elements, num_chirps_per_frame, num_samples]
+    # 顺序与天线阵列一致：先遍历 TX，再遍历 RX
     virtual_elements = num_tx * num_rx
     virtual_data = np.zeros((virtual_elements, num_chirps_per_frame, num_samples), 
                            dtype=np.complex128)
@@ -70,41 +76,37 @@ def process_mimo_tdma(
             virtual_data[virtual_idx, :, :] = rx_data_reshaped[rx_idx, tx_idx, :, :]
             virtual_idx += 1
     
-    # 应用窗函数
-    if window_type == 'hamming':
-        window = np.hamming(num_samples)
-    elif window_type == 'hanning':
-        window = np.hanning(num_samples)
-    else:
-        window = np.ones(num_samples)
+    # 应用窗函数（距离维）
+    range_win = get_window(window_type, num_samples)
     
-    # 距离 FFT
-    range_fft_data = np.fft.fft(virtual_data * window[np.newaxis, np.newaxis, :], 
+    # 距离 FFT（只保留正频率，与 LFMCW 处理器一致）
+    range_fft_data = np.fft.fft(virtual_data * range_win[np.newaxis, np.newaxis, :], 
                                 axis=2)
-    range_fft_data = np.fft.fftshift(range_fft_data, axes=2)
+    num_range_bins = num_samples // 2
+    range_fft_data = range_fft_data[:, :, :num_range_bins]
     
     # 计算距离轴
-    fs = sim_result.fs
+    c = sim_result.c
     bandwidth = sim_result.bandwidth
-    num_range_bins = num_samples
-    range_resolution = fs / (2 * bandwidth)
-    max_range = num_range_bins * range_resolution
-    range_axis = np.linspace(0, max_range, num_range_bins, endpoint=False)
+    range_resolution = c / (2 * bandwidth)
+    range_axis = np.arange(num_range_bins) * range_resolution
     
-    # 多普勒 FFT
-    doppler_fft_data = np.fft.fft(range_fft_data, axis=1)
+    # 多普勒 FFT（加窗抑制旁瓣）
+    doppler_win = get_window(doppler_window, num_chirps_per_frame)
+    doppler_fft_data = np.fft.fft(range_fft_data * doppler_win[np.newaxis, :, np.newaxis], axis=1)
     doppler_fft_data = np.fft.fftshift(doppler_fft_data, axes=1)
     
-    # 计算多普勒轴
+    # 计算多普勒轴（转换为速度 m/s）
+    # TDMA 模式下，每根 TX 的有效 PRF = prf / num_tx
     prf = sim_result.prf
+    fc = sim_result.fc
+    effective_prf = prf / num_tx
     num_doppler_bins = num_chirps_per_frame
-    velocity_resolution = prf / num_doppler_bins
-    max_velocity = prf / 2
-    doppler_axis = np.linspace(-max_velocity, max_velocity, num_doppler_bins, endpoint=False)
+    doppler_freq_axis = np.fft.fftshift(np.fft.fftfreq(num_doppler_bins, d=1/effective_prf))
+    doppler_axis = doppler_freq_axis * c / (2 * fc)
     
-    # 提取 RD 谱（第一个虚拟元素作为示例）
-    rd_spectrum = np.abs(doppler_fft_data[0, :, :])  # [doppler_bins, range_bins]
-    rd_spectrum = np.fft.fftshift(rd_spectrum, axes=0)
+    # 提取 RD 谱（所有虚拟元素相干累加）
+    rd_spectrum = np.abs(np.mean(doppler_fft_data, axis=0))  # [doppler_bins, range_bins]
     
     # 计算距离剖面
     range_profile = np.mean(np.abs(range_fft_data), axis=(0, 1))  # [range_bins]
@@ -126,7 +128,8 @@ def process_mimo_tdma(
 def process_mimo_ddma(
     sim_result,
     antenna_array: Optional[MimoAntennaArray] = None,
-    window_type: str = 'hamming'
+    window_type: str = 'taylor',
+    doppler_window: str = 'taylor'
 ) -> ProcessedResult:
     """
     处理 DDMA MIMO 数据
@@ -159,26 +162,23 @@ def process_mimo_ddma(
     if ddma_codes is None:
         raise ValueError("DDMA 模式需要 ddma_codes 进行解码")
     
-    # 应用窗函数
-    if window_type == 'hamming':
-        window = np.hamming(num_samples)
-    elif window_type == 'hanning':
-        window = np.hanning(num_samples)
-    else:
-        window = np.ones(num_samples)
+    # 应用窗函数（距离维）
+    range_win = get_window(window_type, num_samples)
     
-    # 距离 FFT
-    windowed_data = raw_data * window[np.newaxis, np.newaxis, :]
+    # 距离 FFT（只保留正频率）
+    windowed_data = raw_data * range_win[np.newaxis, np.newaxis, :]
     range_fft_data = np.fft.fft(windowed_data, axis=2)
-    range_fft_data = np.fft.fftshift(range_fft_data, axes=2)
+    num_range_bins = num_samples // 2
+    range_fft_data = range_fft_data[:, :, :num_range_bins]
     
     # DDMA 解码：对每个 chirp 应用逆相位编码
+    # 顺序与天线阵列一致：先遍历 TX，再遍历 RX
     decoded_data = np.zeros((num_rx * num_tx, num_chirps, range_fft_data.shape[2]), 
                            dtype=np.complex128)
     
     virtual_idx = 0
-    for rx_idx in range(num_rx):
-        for tx_idx in range(num_tx):
+    for tx_idx in range(num_tx):
+        for rx_idx in range(num_rx):
             # 提取该 RX 的数据
             rx_data = range_fft_data[rx_idx, :, :]  # [num_chirps, range_bins]
             
@@ -189,27 +189,25 @@ def process_mimo_ddma(
             decoded_data[virtual_idx, :, :] = decoded_virtual
             virtual_idx += 1
     
-    # 多普勒 FFT
-    doppler_fft_data = np.fft.fft(decoded_data, axis=1)
+    # 多普勒 FFT（加窗抑制旁瓣）
+    doppler_win = get_window(doppler_window, num_chirps)
+    doppler_fft_data = np.fft.fft(decoded_data * doppler_win[np.newaxis, :, np.newaxis], axis=1)
     doppler_fft_data = np.fft.fftshift(doppler_fft_data, axes=1)
     
     # 计算坐标轴
-    fs = sim_result.fs
+    c = sim_result.c
     bandwidth = sim_result.bandwidth
-    num_range_bins = num_samples
-    range_resolution = fs / (2 * bandwidth)
-    max_range = num_range_bins * range_resolution
-    range_axis = np.linspace(0, max_range, num_range_bins, endpoint=False)
+    range_resolution = c / (2 * bandwidth)
+    range_axis = np.arange(num_range_bins) * range_resolution
     
     prf = sim_result.prf
+    fc = sim_result.fc
     num_doppler_bins = num_chirps
-    velocity_resolution = prf / num_doppler_bins
-    max_velocity = prf / 2
-    doppler_axis = np.linspace(-max_velocity, max_velocity, num_doppler_bins, endpoint=False)
+    doppler_freq_axis = np.fft.fftshift(np.fft.fftfreq(num_doppler_bins, d=1/prf))
+    doppler_axis = doppler_freq_axis * c / (2 * fc)
     
-    # 提取 RD 谱
-    rd_spectrum = np.abs(doppler_fft_data[0, :, :])
-    rd_spectrum = np.fft.fftshift(rd_spectrum, axes=0)
+    # 提取 RD 谱（所有虚拟元素相干累加）
+    rd_spectrum = np.abs(np.mean(doppler_fft_data, axis=0))  # [doppler_bins, range_bins]
     
     # 计算距离剖面
     range_profile = np.mean(np.abs(range_fft_data), axis=(0, 1))
@@ -231,7 +229,8 @@ def process_mimo_ddma(
 def mimo_dbf_angle_estimation(
     processed_result: ProcessedResult,
     angle_search_range: tuple = (-np.pi/3, np.pi/3),
-    angle_resolution: float = np.pi/180
+    angle_resolution: float = np.pi/180,
+    angle_window: str = 'taylor'
 ) -> dict:
     """
     MIMO DBF 角度估计
@@ -265,7 +264,8 @@ def mimo_dbf_angle_estimation(
         processed_result.doppler_axis,
         processed_result.range_axis,
         angle_search_range=angle_search_range,
-        angle_resolution=angle_resolution
+        angle_resolution=angle_resolution,
+        angle_window=angle_window
     )
     
     return dbf_result

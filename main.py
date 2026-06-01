@@ -51,12 +51,12 @@ def run_simulation(
     print("汽车雷达 LFMCW 仿真系统")
     print("=" * 70)
     
-    # Step 1: 配置目标场景（默认场景）
+    # Step 1: 配置目标场景（默认：高速公路相对速度场景）
     if targets is None:
         targets = [
-            {"range": 50.0, "velocity": 20.0, "rcs": 10},   # 50m, 72km/h 远离
-            {"range": 100.0, "velocity": -10.0, "rcs": 5},  # 100m, 36km/h 靠近
-            {"range": 150.0, "velocity": 0.0, "rcs": 0},    # 150m, 静止
+            {"range": 40.0, "velocity": 1.5, "rcs": 10},    # 前车 40m，慢速远离 5.4km/h
+            {"range": 80.0, "velocity": -3.0, "rcs": 5},    # 旁车道 80m，靠近 10.8km/h
+            {"range": 150.0, "velocity": 0.0, "rcs": 0},    # 静止物 150m（桥梁/护栏）
         ]
     
     print(f"\n[1/4] 配置目标场景:")
@@ -135,11 +135,6 @@ def main():
     # 运行仿真
     sim_result, processed_result = run_simulation(
         waveform_type="lfmcw",
-        targets=[
-            {"range": 50.0, "velocity": 20.0, "rcs": 10},
-            {"range": 100.0, "velocity": -10.0, "rcs": 5},
-            {"range": 150.0, "velocity": 0.0, "rcs": 0},
-        ],
         snr_db=20.0,
         seed=42,
         visualize=True,
