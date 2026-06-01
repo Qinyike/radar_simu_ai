@@ -1,231 +1,180 @@
-# 汽车雷达 LFMCW 仿真框架
+# LFMCW 雷达仿真框架
 
-基于分层架构设计的可扩展、可维护的雷达仿真系统。
+一个模块化的汽车雷达 LFMCW（线性调频连续波）仿真框架，支持 MIMO、TDMA/DDMA 波形和 DBF 角度估计。
 
-## 🚀 快速开始
+## ✨ 主要特性
 
-**新手？从这里开始！**
-
-1. 📖 [5分钟快速上手](QUICKSTART.md) - 了解项目概况
-2. 🎓 [完整教程](TUTORIAL.md) - 从入门到精通的学习路径
-3. 💻 [代码示例集](examples/README.md) - 6个实用示例教你如何使用
-
-或者直接运行：
-```bash
-# Windows
-run_examples.bat
-
-# Linux/Mac
-chmod +x run_examples.sh
-./run_examples.sh
-```
-
----
-
-## 📋 项目概述
-
-本项目实现了一个遵循严格分层架构的汽车雷达 LFMCW（线性调频连续波）仿真框架，使得新增功能（如新算法、新波形）像"插入模块"一样简单。
-
-## 🏗️ 架构设计
-
-### 分层结构（从底到顶）
-
-```
-┌─────────────────────────────────────┐
-│   入口/调度层 (main.py)              │  ← 配置解析、流程编排
-├─────────────────────────────────────┤
-│   可视化/输出层 (visualizers/)       │  ← 图表绘制、结果输出
-├─────────────────────────────────────┤
-│   信号处理/算法层 (processors/)      │  ← FFT、CFAR、DOA 等算法
-├─────────────────────────────────────┤
-│   波形生成/仿真层 (simulators/)      │  ← LFMCW、FMCW 等波形仿真
-├─────────────────────────────────────┤
-│   数据定义/契约层 (contracts.py)     │  ← SimResult, ProcessedResult
-└─────────────────────────────────────┘
-```
-
-### 核心设计原则
-
-1. **单向数据流**: 配置 → 仿真 → 处理 → 可视化
-2. **统一接口契约**: 层间通过 `SimResult` 和 `ProcessedResult` 通信
-3. **模块独立**: 同层模块互不依赖
-4. **无状态处理**: 算法层使用纯函数
-5. **注册表模式**: 通过注册表管理模块，无需修改核心代码
-
-## 📁 项目结构
-
-```
-radar_simu_ai/
-├── contracts.py                  # 数据契约定义
-├── main.py                       # 主程序入口
-├── simulators/
-│   ├── __init__.py              # 仿真器注册表
-│   └── lfmcw_simulator.py       # LFMCW 仿真器
-├── processors/
-│   ├── __init__.py              # 处理器注册表
-│   └── lfmcw_processor.py       # LFMCW 信号处理器
-├── visualizers/
-│   ├── __init__.py              # 可视化工具
-│   └── rd_visualizer.py         # 距离-多普勒可视化
-├── tests/
-│   ├── __init__.py
-│   └── test_contracts.py        # 单元测试
-├── output/                       # 输出图表目录
-├── base_rule.md                  # 架构指南
-└── README.md                     # 本文件
-```
+- **模块化设计**: 仿真器、处理器、可视化分离
+- **MIMO 支持**: 4T4R 配置，TDMA/DDMA 波形
+- **DBF 角度估计**: 高精度角度测量（±60°）
+- **丰富的示例**: 9+ 完整示例代码
+- **完善的文档**: 详细的使用指南和教程
 
 ## 🚀 快速开始
 
 ### 安装依赖
 
 ```bash
-pip install numpy matplotlib
+# 使用 Pixi（推荐）
+pixi install
+
+# 或使用 pip
+pip install numpy scipy matplotlib
 ```
 
-### 运行仿真
+### 运行示例
 
 ```bash
-python main.py
-```
+# 运行主程序
+pixi run python main.py
 
-这将执行：
-1. 配置三目标场景（50m、100m、150m）
-2. 生成 LFMCW 回波数据
-3. 执行 2D-FFT 信号处理
-4. 显示距离-多普勒谱和距离剖面图
-5. 保存图表到 `output/` 目录
+# 运行示例 1（基础仿真）
+pixi run python examples/example1_basic.py
+
+# 运行 MIMO 示例
+pixi run python examples/example9_mimo_tdma.py
+```
 
 ### 运行测试
 
 ```bash
-python tests/test_contracts.py
+# 运行所有测试
+pixi run test
+
+# 运行快速测试
+pixi run python scripts/test_mimo_quick.py
 ```
 
-测试包括：
-- ✓ 契约完整性验证
-- ✓ 模块接口测试
-- ✓ 物理正确性验证
+## 📁 项目结构
 
-## 💡 使用示例
+```
+radar_simu_ai/
+├── docs/                    # 📚 文档
+│   ├── README.md           # 文档索引
+│   ├── QUICKSTART.md       # 快速开始
+│   ├── TUTORIAL.md         # 详细教程
+│   ├── MIMO_GUIDE.md       # MIMO 指南
+│   └── ...                 # 其他文档
+├── scripts/                 # 🛠️ 工具和测试脚本
+│   ├── test_mimo_quick.py  # MIMO 快速测试
+│   ├── run_examples.bat    # Windows 批处理
+│   ├── run_examples.sh     # Linux/Mac Shell
+│   └── ...                 # 其他脚本
+├── simulators/              # 📡 仿真器模块
+│   ├── lfmcw_simulator.py  # LFMCW 仿真器
+│   └── mimo_simulator.py   # MIMO 仿真器
+├── processors/              # 🔧 处理器模块
+│   ├── lfmcw_processor.py  # LFMCW 处理器
+│   └── mimo_processor.py   # MIMO 处理器
+├── visualizers/             # 📊 可视化工具
+│   └── rd_visualizer.py    # RD 谱可视化工具
+├── examples/                # 💡 示例代码
+│   ├── example1_basic.py   # 基础仿真
+│   ├── example2_multi_target.py  # 多目标
+│   ├── ...
+│   └── example9_mimo_tdma.py     # MIMO TDMA
+├── tests/                   # ✅ 单元测试
+│   └── test_contracts.py   # 契约测试
+├── contracts.py             # 📋 数据契约
+├── main.py                  # 🚀 主程序入口
+├── base_rule.md             # 📖 基础规则
+├── pixi.toml                # ⚙️ Pixi 配置
+└── output/                  # 📤 输出目录
+```
 
-### 自定义目标场景
+## 📖 文档
+
+所有文档都在 [docs/](docs/) 目录中：
+
+- **[快速开始](docs/QUICKSTART.md)** - 5 分钟上手
+- **[详细教程](docs/TUTORIAL.md)** - 完整学习路径
+- **[MIMO 指南](docs/MIMO_GUIDE.md)** - MIMO 雷达使用指南
+- **[快速参考](docs/QUICK_REFERENCE.md)** - API 速查表
+- **[示例说明](docs/EXAMPLES_SUMMARY.md)** - 所有示例介绍
+
+## 💻 核心功能
+
+### 1. LFMCW 仿真
 
 ```python
-from main import run_simulation
+from simulators import LfmcwSimulator
+from processors import process_lfmcw
 
-# 定义自己的目标场景
+# 创建仿真器
+simulator = LfmcwSimulator(fc=77e9, bandwidth=150e6)
+
+# 定义目标
+targets = [{"range": 50.0, "velocity": 3.0, "rcs": 15}]
+
+# 运行仿真
+sim_result = simulator.simulate(targets, snr_db=25.0)
+
+# 处理数据
+processed = process_lfmcw(sim_result)
+```
+
+### 2. MIMO 仿真（4T4R）
+
+```python
+import numpy as np
+from simulators.mimo_simulator import MimoLfmcwSimulator, MimoAntennaArray
+from processors.mimo_processor import process_mimo, mimo_dbf_angle_estimation
+
+# 创建 4T4R 配置
+antenna_array = MimoAntennaArray(num_tx=4, num_rx=4, fc=77e9)
+
+# 创建 MIMO 仿真器
+mimo_sim = MimoLfmcwSimulator(
+    antenna_array=antenna_array,
+    waveform_mode='tdma',  # 或 'ddma'
+    fc=77e9, bandwidth=150e6,
+    chirp_duration=50e-6, fs=10e6,
+    prf=5e3, num_chirps_per_frame=128
+)
+
+# 定义目标（必须包含 angle）
 targets = [
-    {"range": 30.0, "velocity": 15.0, "rcs": 10},   # 近距离快速目标
-    {"range": 80.0, "velocity": -5.0, "rcs": 5},    # 中距离慢速目标
+    {"range": 50.0, "velocity": 3.0, 
+     "angle": np.radians(10), "rcs": 15},
 ]
 
 # 运行仿真
-sim_result, processed_result = run_simulation(
-    waveform_type="lfmcw",
-    targets=targets,
-    snr_db=25.0,
-    seed=123,
-    visualize=True,
-    save_plots=True
-)
+sim_result = mimo_sim.simulate(targets, snr_db=25.0)
+
+# 处理数据
+processed = process_mimo(sim_result)
+
+# DBF 角度估计
+dbf_result = mimo_dbf_angle_estimation(processed)
 ```
 
-### 添加新波形（扩展性演示）
+## 🎯 应用场景
 
-只需三步：
+- **汽车雷达算法开发**: FMCW/MIMO 雷达信号处理
+- **教学演示**: 雷达原理可视化
+- **研究验证**: 新算法原型验证
+- **参数优化**: 系统参数调优
 
-1. **实现仿真器** (`simulators/new_waveform.py`)
-```python
-from contracts import SimResult
+## 🛠️ 技术栈
 
-class NewWaveformSimulator:
-    def simulate(self, targets, ...):
-        # 实现仿真逻辑
-        return SimResult(...)
-```
-
-2. **注册仿真器** (`simulators/__init__.py`)
-```python
-SIMULATOR_REGISTRY = {
-    "lfmcw": create_automotive_lfmcw_simulator,
-    "new_waveform": create_new_waveform_simulator,  # 新增
-}
-```
-
-3. **实现处理器** (`processors/new_waveform_processor.py`)
-```python
-from contracts import ProcessedResult
-
-def process_new_waveform(sim_result):
-    # 实现处理逻辑
-    return ProcessedResult(...)
-```
-
-**无需修改任何现有代码！**
-
-## 🔬 技术细节
-
-### LFMCW 参数（默认）
-
-| 参数 | 值 | 说明 |
-|------|-----|------|
-| 载波频率 | 77 GHz | 汽车雷达频段 |
-| 带宽 | 150 MHz | 决定距离分辨率 |
-| Chirp 持续时间 | 50 μs | 单个调频周期 |
-| 采样率 | 10 MHz | ADC 采样率 |
-| PRF | 5 kHz | 脉冲重复频率 |
-| Chirp 数量 | 128 | 决定速度分辨率 |
-
-### 性能指标
-
-- **距离分辨率**: ~1 m（取决于带宽）
-- **最大探测距离**: ~200 m（取决于采样率）
-- **速度分辨率**: ~0.5 m/s（取决于 chirp 数量）
-- **最大探测速度**: ±50 m/s（取决于 PRF）
-
-## 🧪 测试策略
-
-### 分层测试
-
-1. **契约测试**: 验证数据结构类型和完整性
-2. **接口测试**: 验证模块输入输出符合契约
-3. **算法验证**: 验证数学计算正确性
-4. **物理验证**: 验证检测结果与已知目标一致
-5. **集成测试**: 验证完整流程正常工作
-
-## 📝 开发规范
-
-### 添加新功能自查清单
-
-- [ ] 是否在已有层次内工作？
-- [ ] 是否明确了输入输出契约？
-- [ ] 输出是否严格遵循统一格式？
-- [ ] 是否避免了对同层其他模块的依赖？
-- [ ] 是否通过注册表（而非修改核心代码）启用新功能？
-- [ ] 是否编写了独立的测试？
-
-### 代码风格
-
-- 使用类型提示
-- 编写 docstring
-- 遵循单向依赖原则
-- 保持模块无状态
-
-## 📖 参考资料
-
-- [base_rule.md](base_rule.md) - 详细架构指南
-- 《雷达系统导论》- Merrill Skolnik
-- 《Automotive Radar Signal Processing》- 相关论文
+- **Python 3.10+**
+- **NumPy**: 数值计算
+- **SciPy**: 科学计算
+- **Matplotlib**: 数据可视化
+- **Pixi**: 包管理和环境工具
 
 ## 📄 许可证
 
-MIT License
+本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
 
-## 👥 贡献
+## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
 
+## 📧 联系方式
+
+如有问题或建议，欢迎通过 GitHub Issues 联系。
+
 ---
 
-**架构心法**: 现在多花 20% 的时间定义清晰的边界和契约，未来每次修改和扩展时，就能节省 80% 的调试和重构成本。
+**📚 更多详情请查看 [docs/README.md](docs/README.md)**
