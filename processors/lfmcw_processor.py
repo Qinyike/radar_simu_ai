@@ -1,0 +1,189 @@
+"""
+信号处理/算法层 - LFMCW 雷达信号处理
+
+本模块实现 LFMCW 雷达的核心信号处理算法：
+1. 距离 FFT（快时间 FFT）
+2. 多普勒 FFT（慢时间 FFT）
+3. 距离-多普勒谱生成
+4. 距离剖面提取
+"""
+
+import sys
+import os
+
+# 添加项目根目录到 Python 路径（支持直接运行此文件）
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import numpy as np
+from contracts import SimResult, ProcessedResult
+
+
+def range_fft(
+    baseband: np.ndarray,
+    window: str = "hamming"
+) -> np.ndarray:
+    """
+    对基带数据进行距离 FFT（快时间维度）
+    
+    Args:
+        baseband: 基带数据，形状 [channels, pulses, samples]
+        window: 窗函数类型
+        
+    Returns:
+        距离 FFT 结果，形状 [channels, pulses, samples]
+    """
+    _, num_pulses, num_samples = baseband.shape
+    
+    # 生成窗函数
+    if window == "hamming":
+        win = np.hamming(num_samples)
+    elif window == "hanning":
+        win = np.hanning(num_samples)
+    else:
+        win = np.ones(num_samples)
+    
+    # 应用窗函数并进行 FFT
+    windowed_data = baseband * win[np.newaxis, np.newaxis, :]
+    range_fft_result = np.fft.fft(windowed_data, axis=2)
+    
+    # 只保留正频率部分
+    num_range_bins = num_samples // 2
+    range_fft_result = range_fft_result[:, :, :num_range_bins]
+    
+    return range_fft_result
+
+
+def doppler_fft(
+    range_fft_data: np.ndarray,
+    window: str = "hamming"
+) -> np.ndarray:
+    """
+    对距离 FFT 结果进行多普勒 FFT（慢时间维度）
+    
+    Args:
+        range_fft_data: 距离 FFT 结果，形状 [channels, pulses, range_bins]
+        window: 窗函数类型
+        
+    Returns:
+        距离-多普勒谱，形状 [channels, doppler_bins, range_bins]
+    """
+    _, num_pulses, num_range_bins = range_fft_data.shape
+    
+    # 生成窗函数
+    if window == "hamming":
+        win = np.hamming(num_pulses)
+    elif window == "hanning":
+        win = np.hanning(num_pulses)
+    else:
+        win = np.ones(num_pulses)
+    
+    # 应用窗函数并进行 FFT
+    windowed_data = range_fft_data * win[np.newaxis, :, np.newaxis]
+    rd_spectrum = np.fft.fftshift(np.fft.fft(windowed_data, axis=1), axes=1)
+    
+    return rd_spectrum
+
+
+def compute_range_axis(
+    fs: float,
+    bandwidth: float,
+    num_samples: int,
+    c: float = 3e8,
+    use_positive_only: bool = True
+) -> np.ndarray:
+    """
+    计算距离轴（物理单位：米）
+    
+    Args:
+        fs: 采样率 (Hz)
+        bandwidth: 信号带宽 (Hz)
+        num_samples: 采样点数
+        c: 光速 (m/s)
+        use_positive_only: 是否只使用正频率部分（默认 True）
+        
+    Returns:
+        距离轴数组，长度 num_samples//2（如果 use_positive_only=True）
+    """
+    num_range_bins = num_samples // 2 if use_positive_only else num_samples
+    range_resolution = c / (2 * bandwidth)
+    range_axis = np.arange(num_range_bins) * range_resolution
+    
+    return range_axis
+
+
+def compute_doppler_axis(
+    prf: float,
+    num_pulses: int,
+    fc: float,
+    c: float = 3e8
+) -> np.ndarray:
+    """
+    计算多普勒轴（物理单位：米/秒）
+    
+    Args:
+        prf: 脉冲重复频率 (Hz)
+        num_pulses: chirp 数量
+        fc: 载波频率 (Hz)
+        c: 光速 (m/s)
+        
+    Returns:
+        多普勒轴数组，长度 num_pulses
+    """
+    # 多普勒频率轴
+    doppler_freq_axis = np.fft.fftshift(np.fft.fftfreq(num_pulses, d=1/prf))
+    
+    # 转换为速度轴：v = f_doppler * c / (2 * fc)
+    velocity_axis = doppler_freq_axis * c / (2 * fc)
+    
+    return velocity_axis
+
+
+def process_lfmcw(sim_result: SimResult) -> ProcessedResult:
+    """
+    处理 LFMCW 仿真结果，生成距离-多普勒谱
+    
+    这是信号处理层的主入口函数，执行完整的 2D-FFT 处理流程。
+    
+    Args:
+        sim_result: 仿真结果契约对象
+        
+    Returns:
+        ProcessedResult: 处理结果契约对象
+    """
+    # 提取参数
+    baseband = sim_result.baseband
+    fc = sim_result.fc
+    bandwidth = sim_result.bandwidth
+    fs = sim_result.fs
+    prf = sim_result.prf
+    num_chirps = sim_result.num_chirps
+    samples_per_chirp = sim_result.samples_per_chirp
+    c = sim_result.c
+    
+    # Step 1: 距离 FFT
+    range_fft_data = range_fft(baseband, window="hamming")
+    
+    # Step 2: 多普勒 FFT
+    rd_spectrum = doppler_fft(range_fft_data, window="hamming")
+    
+    # Step 3: 计算坐标轴
+    range_axis = compute_range_axis(fs, bandwidth, samples_per_chirp, c, use_positive_only=True)
+    doppler_axis = compute_doppler_axis(prf, num_chirps, fc, c)
+    
+    # Step 4: 提取距离剖面（沿多普勒维度的最大值投影）
+    # rd_spectrum[0, :, :] 的形状是 [doppler_bins, range_bins]
+    # 需要转置为 [range_bins, doppler_bins] 以符合契约
+    rd_spectrum_2d = rd_spectrum[0, :, :].T  # 转置：[range_bins, doppler_bins]
+    range_profile = np.max(np.abs(rd_spectrum_2d), axis=1)  # 沿多普勒维度取最大值
+    
+    # 构建处理结果
+    processed_result = ProcessedResult(
+        name=f"{sim_result.name}_processed",
+        range_profile=range_profile,
+        range_doppler=np.abs(rd_spectrum_2d),
+        range_axis=range_axis,
+        doppler_axis=doppler_axis
+    )
+    
+    return processed_result

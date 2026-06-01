@@ -1,0 +1,20 @@
+[workspace]
+authors = ["zenghui.li <>"]
+channels = ["conda-forge"]
+name = "radar_simu_ai"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[tasks]
+# 运行主仿真程序
+run = "python main.py"
+
+# 运行测试
+test = "python tests/test_contracts.py"
+
+[dependencies]
+python = "3.14.*"
+matplotlib = ">=3.10.9,<4"
+numpy = ">=2.4.6,<3"
+scipy = ">=1.17.1,<2"
+pandas = ">=3.0.3,<4"
