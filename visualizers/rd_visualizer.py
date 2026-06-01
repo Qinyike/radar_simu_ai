@@ -17,7 +17,6 @@ if __name__ == "__main__":
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
 from contracts import ProcessedResult
 
 
@@ -285,7 +284,7 @@ def plot_comprehensive(
     # 优化布局 - 使用 constrained_layout 替代 tight_layout 以避免警告
     try:
         fig.set_constrained_layout(True)
-    except:
+    except Exception:
         # 如果 constrained_layout 不可用，使用手动调整 - 进一步减小右侧留白
         plt.subplots_adjust(top=0.92, bottom=0.08, left=0.10, right=0.99, hspace=0.3)
     

@@ -194,30 +194,67 @@ rd_noise = proc(make_result(bb_noise, sim_result))
 print(f"  ✓ 全部处理完成")
 
 # ============================================================================
-# 4. 可视化
+# 4. 可视化：ADC 时域 + RD 谱 + 距离剖面
 # ============================================================================
 print("\n[4/4] 生成可视化图表...")
 
-fig = plt.figure(figsize=(20, 14))
-gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.3)
+# 选一个 chirp 展示 ADC 时域波形（选第 10 个 chirp，避免边界）
+chirp_idx = 10
+adc_clean = baseband[0, chirp_idx, :]
+adc_fmcw = bb_fmcw[0, chirp_idx, :]
+adc_cw = bb_cw[0, chirp_idx, :]
+adc_noise = bb_noise[0, chirp_idx, :]
+t_us = t_fast * 1e6  # 转为 μs
 
-titles = [
-    'FMCW Radar Interference (RRI)\n3 interferers, ISR = -5 dB',
-    'CW Interference\n2 sources, ISR = -10 dB',
-    'Wideband Noise Jamming\nISR = +5 dB',
-    'Range Profile Comparison',
-]
-results = [rd_fmcw, rd_cw, rd_noise]
-colors = ['#e74c3c', '#3498db', '#2ecc71']
+all_adcs = [adc_clean, adc_fmcw, adc_cw, adc_noise]
+all_rds = [clean, rd_fmcw, rd_cw, rd_noise]
+adc_titles = ['Clean', 'FMCW RRI (ISR=-5dB)', 'CW Interference (ISR=-10dB)', 'Noise Jamming (ISR=+5dB)']
+rd_titles = ['Clean RD', 'FMCW RRI RD', 'CW Interf. RD', 'Noise Jam. RD']
+adc_colors = ['#2c3e50', '#e74c3c', '#3498db', '#2ecc71']
 
-# 上排：RD 谱
-for i, (res, title) in enumerate(zip(results, titles[:3])):
-    ax = fig.add_subplot(gs[0, i // 2] if i < 2 else gs[0, 1])
-    if i == 1:
-        ax = fig.add_subplot(gs[0, 1])
-    elif i == 2:
-        # 第三个放不下，跳过
-        break
+# ---- 图 1：ADC 时域波形（I/Q 实部/虚部）----
+fig1, axes1 = plt.subplots(2, 4, figsize=(22, 8))
+
+for col in range(4):
+    # 上排：I/Q 实部
+    ax = axes1[0, col]
+    ax.plot(t_us, np.real(all_adcs[col]), color=adc_colors[col], linewidth=0.6, alpha=0.9)
+    ax.set_title(adc_titles[col], fontsize=11, fontweight='bold',
+                 color=adc_colors[col] if col > 0 else '#2c3e50')
+    ax.set_ylabel('I (Real)', fontsize=10)
+    ax.grid(True, alpha=0.3)
+    if col == 0:
+        ax.set_ylabel('I (Real)', fontsize=10, fontweight='bold')
+    # 统一 y 轴范围方便对比
+    ymax = max(np.max(np.abs(np.real(a))) for a in all_adcs) * 1.1
+    ax.set_ylim(-ymax, ymax)
+
+    # 下排：Q 虚部
+    ax = axes1[1, col]
+    ax.plot(t_us, np.imag(all_adcs[col]), color=adc_colors[col], linewidth=0.6, alpha=0.9)
+    ax.set_xlabel('Fast Time (μs)', fontsize=10)
+    ax.set_ylabel('Q (Imag)', fontsize=10)
+    ax.grid(True, alpha=0.3)
+    if col == 0:
+        ax.set_ylabel('Q (Imag)', fontsize=10, fontweight='bold')
+    ax.set_ylim(-ymax, ymax)
+
+fig1.suptitle(f'ADC Chirp Signal Comparison (Chirp #{chirp_idx})\n'
+              f'77 GHz, {bandwidth/1e6:.0f} MHz BW, {fs/1e6:.0f} MHz Fs, '
+              f'{samples_per_chirp} samples',
+              fontsize=14, fontweight='bold', y=1.02)
+plt.tight_layout()
+plt.savefig('./output/example12_adc_comparison.png', dpi=150, bbox_inches='tight')
+print("  ✓ ADC 对比图已保存")
+plt.show()
+
+# ---- 图 2：RD 谱（干净 vs 三种干扰）----
+fig2, axes2 = plt.subplots(2, 2, figsize=(18, 14))
+
+for idx in range(4):
+    ax = axes2[idx // 2, idx % 2]
+    res = all_rds[idx]
+    title = rd_titles[idx]
 
     rd_db = 20 * np.log10(res.range_doppler + 1e-10)
     r_ax = res.range_axis
@@ -233,47 +270,23 @@ for i, (res, title) in enumerate(zip(results, titles[:3])):
     mesh = ax.pcolormesh(r_edges, d_edges, rd_db.T, shading='flat', cmap='jet')
     ax.set_xlabel('Range (m)', fontsize=11, fontweight='bold')
     ax.set_ylabel('Velocity (m/s)', fontsize=11, fontweight='bold')
-    ax.set_title(title, fontsize=12, fontweight='bold')
-    plt.colorbar(mesh, ax=ax, shrink=0.85, label='dB')
-
-# 重新规划布局：2x2，左上和右上放两个干扰，左下放第三个，右下放对比
-fig = plt.figure(figsize=(20, 12))
-gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.3)
-
-panels = [
-    (rd_fmcw, 'FMCW Radar Interference (RRI)\n3 interferers, ISR = -5 dB'),
-    (rd_cw, 'CW Interference\n2 sources, ISR = -10 dB'),
-    (rd_noise, 'Wideband Noise Jamming\nISR = +5 dB'),
-    None,  # placeholder for range profile
-]
-
-for idx in range(3):
-    ax = fig.add_subplot(gs[idx // 2, idx % 2])
-    res, title = panels[idx]
-
-    rd_db = 20 * np.log10(res.range_doppler + 1e-10)
-    r_ax = res.range_axis
-    d_ax = res.doppler_axis
-
-    r_edges = np.zeros(len(r_ax) + 1)
-    r_edges[:-1] = r_ax - (r_ax[1] - r_ax[0]) / 2
-    r_edges[-1] = r_ax[-1] + (r_ax[1] - r_ax[0]) / 2
-    d_edges = np.zeros(len(d_ax) + 1)
-    d_edges[:-1] = d_ax - (d_ax[1] - d_ax[0]) / 2
-    d_edges[-1] = d_ax[-1] + (d_ax[1] - d_ax[0]) / 2
-
-    mesh = ax.pcolormesh(r_edges, d_edges, rd_db.T, shading='flat', cmap='jet')
-    ax.set_xlabel('Range (m)', fontsize=11, fontweight='bold')
-    ax.set_ylabel('Velocity (m/s)', fontsize=11, fontweight='bold')
-    ax.set_title(title, fontsize=12, fontweight='bold')
+    color_label = adc_colors[idx] if idx > 0 else '#2c3e50'
+    ax.set_title(title, fontsize=12, fontweight='bold', color=color_label)
     plt.colorbar(mesh, ax=ax, shrink=0.85, label='dB')
 
     # 标注目标
     for t in targets:
         ax.plot(t['range'], t['velocity'], 'w+', markersize=12, markeredgewidth=2)
 
-# 右下：距离剖面对比
-ax = fig.add_subplot(gs[1, 1])
+fig2.suptitle('Range-Doppler Spectrum Under Different Interference',
+              fontsize=16, fontweight='bold', y=1.01)
+plt.tight_layout()
+plt.savefig('./output/example12_rd_comparison.png', dpi=150, bbox_inches='tight')
+print("  ✓ RD 谱对比图已保存")
+plt.show()
+
+# ---- 图 3：距离剖面对比 ----
+fig3, ax = plt.subplots(figsize=(14, 6))
 range_axis = clean.range_axis
 
 rp_clean = 20 * np.log10(clean.range_profile + 1e-10)
@@ -281,29 +294,26 @@ rp_fmcw = 20 * np.log10(rd_fmcw.range_profile + 1e-10)
 rp_cw = 20 * np.log10(rd_cw.range_profile + 1e-10)
 rp_noise = 20 * np.log10(rd_noise.range_profile + 1e-10)
 
-ax.plot(range_axis, rp_clean, 'k-', linewidth=1.5, label='Clean', alpha=0.9)
-ax.plot(range_axis, rp_fmcw, '-', color='#e74c3c', linewidth=1.2, label='FMCW RRI', alpha=0.8)
-ax.plot(range_axis, rp_cw, '-', color='#3498db', linewidth=1.2, label='CW Interf.', alpha=0.8)
-ax.plot(range_axis, rp_noise, '-', color='#2ecc71', linewidth=1.2, label='Noise Jam.', alpha=0.8)
+ax.plot(range_axis, rp_clean, 'k-', linewidth=2, label='Clean', alpha=0.9)
+ax.plot(range_axis, rp_fmcw, '-', color='#e74c3c', linewidth=1.3, label='FMCW RRI (-5dB)', alpha=0.8)
+ax.plot(range_axis, rp_cw, '-', color='#3498db', linewidth=1.3, label='CW Interf. (-10dB)', alpha=0.8)
+ax.plot(range_axis, rp_noise, '-', color='#2ecc71', linewidth=1.3, label='Noise Jam. (+5dB)', alpha=0.8)
 
-# 标注目标距离
 for t in targets:
     ax.axvline(x=t['range'], color='gray', linestyle='--', alpha=0.4, linewidth=0.8)
     ax.annotate(f'R={t["range"]:.0f}m', (t['range'], ax.get_ylim()[1] * 0.95),
                 ha='center', fontsize=8, color='gray')
 
-ax.set_xlabel('Range (m)', fontsize=11, fontweight='bold')
-ax.set_ylabel('Amplitude (dB)', fontsize=11, fontweight='bold')
-ax.set_title('Range Profile Comparison', fontsize=12, fontweight='bold')
-ax.legend(fontsize=9, loc='upper right')
+ax.set_xlabel('Range (m)', fontsize=12, fontweight='bold')
+ax.set_ylabel('Amplitude (dB)', fontsize=12, fontweight='bold')
+ax.set_title('Range Profile: Clean vs Interference', fontsize=14, fontweight='bold')
+ax.legend(fontsize=10, loc='upper right')
 ax.grid(True, alpha=0.3)
 ax.set_xlim([0, range_axis[-1]])
 
-fig.suptitle('LFMCW Radar Interference Analysis\n77 GHz, 150 MHz BW, PRF 20 kHz',
-             fontsize=16, fontweight='bold', y=1.01)
-
-plt.savefig('./output/example12_interference.png', dpi=150, bbox_inches='tight')
-print("  ✓ 图表已保存到 ./output/example12_interference.png")
+plt.tight_layout()
+plt.savefig('./output/example12_range_profile.png', dpi=150, bbox_inches='tight')
+print("  ✓ 距离剖面对比图已保存")
 plt.show()
 
 # ============================================================================

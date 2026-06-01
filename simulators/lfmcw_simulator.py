@@ -16,6 +16,7 @@ from typing import Optional
 
 import numpy as np
 from contracts import SimResult
+from utils.noise import add_awgn
 
 
 class LfmcwSimulator:
@@ -77,7 +78,9 @@ class LfmcwSimulator:
             SimResult: 符合契约的仿真结果
         """
         if seed is not None:
-            np.random.seed(seed)
+            rng = np.random.default_rng(seed)
+        else:
+            rng = np.random.default_rng()
         
         samples_per_chirp = self.samples_per_chirp
         num_chirps = self.num_chirps
@@ -125,13 +128,7 @@ class LfmcwSimulator:
                 baseband[0, n, :] += amplitude * np.exp(1j * phase)
         
         # 添加噪声
-        signal_power = np.mean(np.abs(baseband) ** 2)
-        noise_power = signal_power / (10 ** (snr_db / 10.0))
-        noise = np.sqrt(noise_power / 2) * (
-            np.random.randn(*baseband.shape) + 
-            1j * np.random.randn(*baseband.shape)
-        )
-        baseband += noise
+        baseband = add_awgn(baseband, snr_db, rng=rng)
         
         # 构建仿真结果
         sim_result = SimResult(

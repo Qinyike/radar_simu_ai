@@ -18,6 +18,7 @@ if __name__ == "__main__":
 from typing import Optional, List
 import numpy as np
 from contracts import SimResult
+from utils.noise import add_awgn
 
 
 class MimoAntennaArray:
@@ -228,7 +229,9 @@ class MimoLfmcwSimulator:
             sim_result: 仿真结果契约对象
         """
         if seed is not None:
-            np.random.seed(seed)
+            rng = np.random.default_rng(seed)
+        else:
+            rng = np.random.default_rng()
         
         num_tx = self.antenna_array.num_tx
         num_rx = self.antenna_array.num_rx
@@ -265,11 +268,7 @@ class MimoLfmcwSimulator:
                     rx_data[rx_idx, chirp_idx, :] += beat
         
         # 添加噪声
-        signal_power = np.mean(np.abs(rx_data)**2)
-        noise_power = signal_power / (10 ** (snr_db / 10))
-        noise = np.sqrt(noise_power / 2) * (np.random.randn(*rx_data.shape) + 
-                                            1j * np.random.randn(*rx_data.shape))
-        rx_data += noise
+        rx_data = add_awgn(rx_data, snr_db, rng=rng)
         
         # 构建目标信息
         target_info = {
@@ -313,7 +312,9 @@ class MimoLfmcwSimulator:
             sim_result: 仿真结果契约对象
         """
         if seed is not None:
-            np.random.seed(seed)
+            rng = np.random.default_rng(seed)
+        else:
+            rng = np.random.default_rng()
         
         num_tx = self.antenna_array.num_tx
         num_rx = self.antenna_array.num_rx
@@ -361,11 +362,7 @@ class MimoLfmcwSimulator:
                     rx_data[rx_idx, chirp_idx, :] += combined_beat
         
         # 添加噪声
-        signal_power = np.mean(np.abs(rx_data)**2)
-        noise_power = signal_power / (10 ** (snr_db / 10))
-        noise = np.sqrt(noise_power / 2) * (np.random.randn(*rx_data.shape) + 
-                                            1j * np.random.randn(*rx_data.shape))
-        rx_data += noise
+        rx_data = add_awgn(rx_data, snr_db, rng=rng)
         
         # 构建目标信息
         target_info = {
@@ -450,81 +447,10 @@ def dbf_angle_estimation(
     angle_resolution: float = np.pi/180,
     angle_window: str = 'taylor'
 ) -> dict:
-    """
-    DBF（数字波束形成）角度估计
-    
-    对 RD 谱中的每个检测点进行角度扫描，找到最强响应方向。
-    
-    Args:
-        rd_spectrum: Range-Doppler 谱 [range_bins, doppler_bins, virtual_elements]
-        antenna_array: MIMO 天线阵列配置
-        doppler_axis: 多普勒轴
-        range_axis: 距离轴
-        angle_search_range: 角度搜索范围 (min, max)，单位：弧度
-        angle_resolution: 角度分辨率，单位：弧度
-        angle_window: 虚拟阵列加窗类型（降低角度旁瓣）
-        
-    Returns:
-        angle_spectrum: 角度谱 [range_bins, doppler_bins, angle_bins]
-        detected_angles: 检测到的角度信息列表
-    """
-    num_range = len(range_axis)
-    num_doppler = len(doppler_axis)
-    num_virtual = antenna_array.virtual_array_size
-    
-    # 生成角度搜索网格
-    angles = np.arange(angle_search_range[0], angle_search_range[1] + angle_resolution, 
-                       angle_resolution)
-    num_angles = len(angles)
-    
-    # 虚拟阵列加窗（降低角度旁瓣）
-    from processors.window_utils import get_window
-    angle_win = get_window(angle_window, num_virtual)
-    
-    # 预计算所有角度的导向矢量 [num_angles, virtual_elements]
-    steering_vectors = np.array([
-        antenna_array.get_steering_vector(angle) for angle in angles
-    ])
-    
-    # 初始化角度谱
-    angle_spectrum = np.zeros((num_range, num_doppler, num_angles), dtype=np.float64)
-    
-    # 对每个 RD 单元进行波束形成
-    for r_idx in range(num_range):
-        for d_idx in range(num_doppler):
-            # 获取该 RD 单元的虚拟阵列数据并加窗
-            virtual_data = rd_spectrum[r_idx, d_idx, :] * angle_win  # [virtual_elements]
-            
-            # 对所有角度计算波束形成输出
-            for a_idx, sv in enumerate(steering_vectors):
-                # DBF: w^H * x，其中 w 是导向矢量，x 是加窗后的接收数据
-                beam_output = np.dot(np.conj(sv), virtual_data)
-                angle_spectrum[r_idx, d_idx, a_idx] = np.abs(beam_output)**2
-    
-    # 检测最强角度
-    detected_angles = []
-    threshold = np.max(angle_spectrum) * 0.1  # 简单阈值
-    
-    for r_idx in range(num_range):
-        for d_idx in range(num_doppler):
-            angle_profile = angle_spectrum[r_idx, d_idx, :]
-            max_angle_idx = np.argmax(angle_profile)
-            max_power = angle_profile[max_angle_idx]
-            
-            if max_power > threshold:
-                detected_angles.append({
-                    'range': range_axis[r_idx],
-                    'doppler': doppler_axis[d_idx],
-                    'angle': angles[max_angle_idx],
-                    'angle_deg': np.degrees(angles[max_angle_idx]),
-                    'power': max_power
-                })
-    
-    return {
-        'angle_spectrum': angle_spectrum,
-        'angles': angles,
-        'detected_angles': detected_angles
-    }
+    """DBF 角度估计（已移至 processors.mimo_processor，保留向后兼容）"""
+    from processors.mimo_processor import dbf_angle_estimation as _dbf
+    return _dbf(rd_spectrum, antenna_array, doppler_axis, range_axis,
+                angle_search_range, angle_resolution, angle_window)
 
 
 if __name__ == "__main__":

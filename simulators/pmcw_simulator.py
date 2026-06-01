@@ -26,6 +26,7 @@ if __name__ == "__main__":
 from typing import Optional
 import numpy as np
 from contracts import SimResult
+from utils.noise import add_awgn
 
 
 def generate_barker_code(length: int) -> np.ndarray:
@@ -167,7 +168,9 @@ class PmcwSimulator:
             SimResult: 仿真结果
         """
         if seed is not None:
-            np.random.seed(seed)
+            rng = np.random.default_rng(seed)
+        else:
+            rng = np.random.default_rng()
 
         N = self.code_length
         P = self.num_pulses
@@ -203,15 +206,8 @@ class PmcwSimulator:
                 doppler_phase = np.exp(1j * 2 * np.pi * fd * t_pulse[n])
                 baseband[0, n, :] += amplitude * shifted_code * doppler_phase
 
-        signal_power = np.mean(np.abs(baseband) ** 2)
-        if signal_power < 1e-30:
-            signal_power = 1.0
-        noise_power = signal_power / (10 ** (snr_db / 10.0))
-        noise = np.sqrt(noise_power / 2) * (
-            np.random.randn(*baseband.shape) +
-            1j * np.random.randn(*baseband.shape)
-        )
-        baseband += noise
+        # 添加噪声
+        baseband = add_awgn(baseband, snr_db, rng=rng)
 
         return SimResult(
             name="pmcw",
