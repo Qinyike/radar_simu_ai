@@ -18,6 +18,7 @@ if __name__ == "__main__":
 import numpy as np
 import matplotlib.pyplot as plt
 from contracts import ProcessedResult
+from utils.axes import compute_edges
 
 
 def wrap_velocity(velocity, max_velocity):
@@ -73,13 +74,8 @@ def plot_range_doppler(
     #   X_edges = range_edges (251), Y_edges = doppler_edges (129)
     #   C 应该是 rd_db.T，形状 (128, 250)
     
-    range_edges = np.zeros(len(range_axis) + 1)
-    range_edges[:-1] = range_axis - (range_axis[1] - range_axis[0]) / 2
-    range_edges[-1] = range_axis[-1] + (range_axis[1] - range_axis[0]) / 2
-    
-    doppler_edges = np.zeros(len(doppler_axis) + 1)
-    doppler_edges[:-1] = doppler_axis - (doppler_axis[1] - doppler_axis[0]) / 2
-    doppler_edges[-1] = doppler_axis[-1] + (doppler_axis[1] - doppler_axis[0]) / 2
+    range_edges = compute_edges(range_axis)
+    doppler_edges = compute_edges(doppler_axis)
     
     mesh = ax.pcolormesh(range_edges, doppler_edges, rd_db.T, shading='flat', cmap='jet')
     
@@ -185,13 +181,8 @@ def plot_comprehensive(
     # rd_spectrum 形状是 [range_bins, doppler_bins]
     # 使用 pcolormesh 避免空白问题
     
-    range_edges = np.zeros(len(range_axis) + 1)
-    range_edges[:-1] = range_axis - (range_axis[1] - range_axis[0]) / 2
-    range_edges[-1] = range_axis[-1] + (range_axis[1] - range_axis[0]) / 2
-    
-    doppler_edges = np.zeros(len(doppler_axis) + 1)
-    doppler_edges[:-1] = doppler_axis - (doppler_axis[1] - doppler_axis[0]) / 2
-    doppler_edges[-1] = doppler_axis[-1] + (doppler_axis[1] - doppler_axis[0]) / 2
+    range_edges = compute_edges(range_axis)
+    doppler_edges = compute_edges(doppler_axis)
     
     mesh = ax1.pcolormesh(range_edges, doppler_edges, rd_db.T, shading='flat', cmap='jet')
     
@@ -539,12 +530,8 @@ def plot_mimo_comprehensive(
 
     # ---- RD 谱 ----
     rd_db = 20 * np.log10(rd_spectrum + 1e-10)
-    range_edges = np.zeros(len(range_axis) + 1)
-    range_edges[:-1] = range_axis - (range_axis[1] - range_axis[0]) / 2
-    range_edges[-1] = range_axis[-1] + (range_axis[1] - range_axis[0]) / 2
-    doppler_edges = np.zeros(len(doppler_axis) + 1)
-    doppler_edges[:-1] = doppler_axis - (doppler_axis[1] - doppler_axis[0]) / 2
-    doppler_edges[-1] = doppler_axis[-1] + (doppler_axis[1] - doppler_axis[0]) / 2
+    range_edges = compute_edges(range_axis)
+    doppler_edges = compute_edges(doppler_axis)
 
     mesh = ax_rd.pcolormesh(range_edges, doppler_edges, rd_db.T,
                             shading='flat', cmap='jet')

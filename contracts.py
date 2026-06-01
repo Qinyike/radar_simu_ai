@@ -1,14 +1,87 @@
 """
-数据定义/契约层 - 定义层间通信的核心数据结构
+数据定义/契约层 - 定义层间通信的核心数据结构和共享领域模型
 
-本模块定义了仿真框架的两个核心契约：
-1. SimResult: 仿真层与处理层之间的契约
-2. ProcessedResult: 处理层与可视化层之间的契约
+本模块定义了仿真框架的核心契约和共享模型：
+1. MimoAntennaArray: MIMO天线阵列配置（共享领域模型）
+2. SimResult: 仿真层与处理层之间的契约
+3. ProcessedResult: 处理层与可视化层之间的契约
 """
 
 from dataclasses import dataclass, field
 from typing import Optional
 import numpy as np
+
+
+class MimoAntennaArray:
+    """
+    MIMO天线阵列配置
+
+    Attributes:
+        num_tx: 发射天线数量
+        num_rx: 接收天线数量
+        tx_spacing: 发射天线间距 (米)
+        rx_spacing: 接收天线间距 (米)
+        wavelength: 波长 (米)
+        virtual_array_size: 虚拟阵列大小
+        effective_aperture: 有效孔径 (米)
+    """
+
+    def __init__(
+        self,
+        num_tx: int = 4,
+        num_rx: int = 4,
+        tx_spacing: float = None,
+        rx_spacing: float = None,
+        fc: float = 77e9,
+        c: float = 3e8
+    ):
+        self.num_tx = num_tx
+        self.num_rx = num_rx
+        self.wavelength = c / fc
+
+        if tx_spacing is None:
+            self.tx_spacing = num_rx * self.wavelength / 2
+        else:
+            self.tx_spacing = tx_spacing
+
+        if rx_spacing is None:
+            self.rx_spacing = self.wavelength / 2
+        else:
+            self.rx_spacing = rx_spacing
+
+        self.virtual_array_size = num_tx * num_rx
+        self.effective_aperture = (num_tx - 1) * self.tx_spacing + (num_rx - 1) * self.rx_spacing
+
+    def get_virtual_element_positions(self) -> np.ndarray:
+        """
+        获取虚拟阵列元素位置
+
+        Returns:
+            virtual_positions: 虚拟阵列元素位置数组 (virtual_array_size,)
+        """
+        positions = []
+        for tx_idx in range(self.num_tx):
+            tx_pos = tx_idx * self.tx_spacing
+            for rx_idx in range(self.num_rx):
+                rx_pos = rx_idx * self.rx_spacing
+                positions.append(tx_pos + rx_pos)
+
+        return np.array(positions)
+
+    def get_steering_vector(self, angle: float) -> np.ndarray:
+        """
+        计算导向矢量（Steering Vector）
+
+        Args:
+            angle: 目标角度（弧度），相对于法线方向
+
+        Returns:
+            steering_vec: 虚拟阵列导向矢量 (virtual_array_size,)
+        """
+        virtual_positions = self.get_virtual_element_positions()
+        k = 2 * np.pi / self.wavelength
+        phase = k * virtual_positions * np.sin(angle)
+        return np.exp(1j * phase)
 
 
 @dataclass

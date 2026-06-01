@@ -6,11 +6,11 @@
 
 from simulators.lfmcw_simulator import LfmcwSimulator, create_automotive_lfmcw_simulator
 from simulators.mimo_simulator import (
-    MimoAntennaArray, 
-    MimoLfmcwSimulator, 
+    MimoLfmcwSimulator,
     dbf_angle_estimation
 )
 from simulators.pmcw_simulator import PmcwSimulator, create_automotive_pmcw_simulator
+from contracts import MimoAntennaArray
 
 # 仿真器注册表
 SIMULATOR_REGISTRY = {

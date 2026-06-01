@@ -18,6 +18,7 @@ if __name__ == "__main__":
 import numpy as np
 from contracts import SimResult, ProcessedResult
 from processors.window_utils import get_window
+from utils.axes import compute_range_axis, compute_doppler_axis
 
 
 def matched_filter(
@@ -99,14 +100,9 @@ def process_pmcw(
     rd_fft = np.fft.fftshift(rd_fft, axes=1)
 
     # Step 3: 计算坐标轴
-    # 距离轴：相关输出的每个采样点对应一个距离
-    # 距离分辨率 = c / (2 * chip_rate)
-    range_resolution = c / (2 * chip_rate)
-    range_axis = np.arange(code_length) * range_resolution
+    range_axis = compute_range_axis(bandwidth, code_length, c, positive_only=False)
 
-    # 多普勒轴
-    doppler_freq_axis = np.fft.fftshift(np.fft.fftfreq(num_pulses, d=1/prf))
-    doppler_axis = doppler_freq_axis * c / (2 * fc)
+    doppler_axis = compute_doppler_axis(prf, num_pulses, fc, c)
 
     # Step 4: 提取 RD 谱
     # 只取有效距离范围（0 ~ code_length）

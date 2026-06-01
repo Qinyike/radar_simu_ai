@@ -78,7 +78,8 @@ def test_lfmcw_e2e():
 # ============================================================
 def test_mimo_tdma_e2e():
     import numpy as np
-    from simulators.mimo_simulator import MimoLfmcwSimulator, MimoAntennaArray
+    from contracts import MimoAntennaArray
+    from simulators.mimo_simulator import MimoLfmcwSimulator
     from processors.mimo_processor import process_mimo, mimo_dbf_angle_estimation
 
     arr = MimoAntennaArray(num_tx=4, num_rx=4, fc=77e9)

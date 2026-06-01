@@ -77,6 +77,9 @@ class LfmcwSimulator:
         Returns:
             SimResult: 符合契约的仿真结果
         """
+        if not targets:
+            raise ValueError("目标列表不能为空")
+
         if seed is not None:
             rng = np.random.default_rng(seed)
         else:

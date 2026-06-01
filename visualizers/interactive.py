@@ -19,6 +19,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Cursor
 from contracts import ProcessedResult
+from utils.axes import compute_edges
 
 
 class InteractiveRDPlot:
@@ -58,8 +59,8 @@ class InteractiveRDPlot:
         self.fig, self.ax = plt.subplots(figsize=(14, 8))
 
         # 计算边缘
-        r_edges = self._edges(self.range_axis)
-        d_edges = self._edges(self.doppler_axis)
+        r_edges = compute_edges(self.range_axis)
+        d_edges = compute_edges(self.doppler_axis)
 
         # 绘制 RD 谱
         self.mesh = self.ax.pcolormesh(
@@ -201,16 +202,8 @@ class InteractiveRDPlot:
                 self.selected_marker.remove()
                 self.selected_marker = None
             self.anno_text.set_visible(False)
-            self.selected_point = None
-            self.fig.canvas.draw_idle()
-
-    @staticmethod
-    def _edges(axis):
-        d = axis[1] - axis[0]
-        e = np.zeros(len(axis) + 1)
-        e[:-1] = axis - d / 2
-        e[-1] = axis[-1] + d / 2
-        return e
+        self.selected_point = None
+        self.fig.canvas.draw_idle()
 
     def show(self):
         plt.show()
@@ -283,8 +276,8 @@ def plot_comparison_interactive(
 
     r_ax = clean.range_axis
     d_ax = clean.doppler_axis
-    r_edges = _edges(r_ax)
-    d_edges = _edges(d_ax)
+    r_edges = compute_edges(r_ax)
+    d_edges = compute_edges(d_ax)
 
     mesh1 = ax1.pcolormesh(r_edges, d_edges, rd1_db.T, shading='flat', cmap='jet')
     mesh2 = ax2.pcolormesh(r_edges, d_edges, rd2_db.T, shading='flat', cmap='jet')
@@ -357,11 +350,3 @@ def plot_comparison_interactive(
         plt.show()
     else:
         plt.close()
-
-
-def _edges(axis):
-    d = axis[1] - axis[0]
-    e = np.zeros(len(axis) + 1)
-    e[:-1] = axis - d / 2
-    e[-1] = axis[-1] + d / 2
-    return e

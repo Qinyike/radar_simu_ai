@@ -1,100 +1,21 @@
 """
-MIMO 雷达仿真模块 - 支持 TDMA/DDMA 波形和 DBF 解角
+MIMO 雷达仿真模块 - 支持 TDMA/DDMA 波形
 
 本模块实现 MIMO（多输入多输出）汽车雷达的仿真，包括：
-- 4T4R（4发4收）天线阵列配置
 - TDMA（时分多址）波形
-- DDMA（频分多址/相位编码）波形  
-- DBF（数字波束形成）角度估计
+- DDMA（频分多址/相位编码）波形
 """
 
 import sys
 import os
 
-# 添加项目根目录到 Python 路径
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from typing import Optional, List
 import numpy as np
-from contracts import SimResult
+from contracts import SimResult, MimoAntennaArray
 from utils.noise import add_awgn
-
-
-class MimoAntennaArray:
-    """
-    MIMO 天线阵列配置
-    
-    Attributes:
-        num_tx: 发射天线数量
-        num_rx: 接收天线数量
-        tx_spacing: 发射天线间距 (米)
-        rx_spacing: 接收天线间距 (米)
-        wavelength: 波长 (米)
-    """
-    
-    def __init__(
-        self,
-        num_tx: int = 4,
-        num_rx: int = 4,
-        tx_spacing: float = None,
-        rx_spacing: float = None,
-        fc: float = 77e9,
-        c: float = 3e8
-    ):
-        self.num_tx = num_tx
-        self.num_rx = num_rx
-        self.wavelength = c / fc
-        
-        # 默认天线间距：RX 半波长，TX 为 N_rx 倍半波长（形成均匀虚拟阵列）
-        if tx_spacing is None:
-            self.tx_spacing = num_rx * self.wavelength / 2
-        else:
-            self.tx_spacing = tx_spacing
-            
-        if rx_spacing is None:
-            self.rx_spacing = self.wavelength / 2
-        else:
-            self.rx_spacing = rx_spacing
-        
-        # 计算虚拟阵列（等效孔径）- 使用已赋值的实例变量
-        self.virtual_array_size = num_tx * num_rx
-        self.effective_aperture = (num_tx - 1) * self.tx_spacing + (num_rx - 1) * self.rx_spacing
-        
-    def get_virtual_element_positions(self) -> np.ndarray:
-        """
-        获取虚拟阵列元素位置
-        
-        Returns:
-            virtual_positions: 虚拟阵列元素位置数组 (virtual_array_size,)
-        """
-        positions = []
-        for tx_idx in range(self.num_tx):
-            tx_pos = tx_idx * self.tx_spacing
-            for rx_idx in range(self.num_rx):
-                rx_pos = rx_idx * self.rx_spacing
-                # 虚拟元素位置 = TX位置 + RX位置
-                positions.append(tx_pos + rx_pos)
-        
-        return np.array(positions)
-    
-    def get_steering_vector(self, angle: float) -> np.ndarray:
-        """
-        计算导向矢量（Steering Vector）
-        
-        Args:
-            angle: 目标角度（弧度），相对于法线方向
-            
-        Returns:
-            steering_vec: 虚拟阵列导向矢量 (virtual_array_size,)
-        """
-        virtual_positions = self.get_virtual_element_positions()
-        
-        # 导向矢量: exp(j * 2π * d * sin(θ) / λ)
-        k = 2 * np.pi / self.wavelength
-        phase = k * virtual_positions * np.sin(angle)
-        
-        return np.exp(1j * phase)
 
 
 class MimoLfmcwSimulator:
@@ -218,8 +139,6 @@ class MimoLfmcwSimulator:
         """
         TDMA MIMO 仿真
         
-        TDMA 模式下，每个 chirp 只激活一个 TX 天线，按顺序轮流发射。
-        
         Args:
             targets: 目标列表，每个目标包含 {'range', 'velocity', 'angle', 'rcs'}
             snr_db: 信噪比 (dB)
@@ -228,6 +147,9 @@ class MimoLfmcwSimulator:
         Returns:
             sim_result: 仿真结果契约对象
         """
+        if not targets:
+            raise ValueError("目标列表不能为空")
+
         if seed is not None:
             rng = np.random.default_rng(seed)
         else:
@@ -301,8 +223,6 @@ class MimoLfmcwSimulator:
         """
         DDMA MIMO 仿真
         
-        DDMA 模式下，所有 TX 天线同时发射，但使用不同的相位编码区分。
-        
         Args:
             targets: 目标列表，每个目标包含 {'range', 'velocity', 'angle', 'rcs'}
             snr_db: 信噪比 (dB)
@@ -311,6 +231,9 @@ class MimoLfmcwSimulator:
         Returns:
             sim_result: 仿真结果契约对象
         """
+        if not targets:
+            raise ValueError("目标列表不能为空")
+
         if seed is not None:
             rng = np.random.default_rng(seed)
         else:
@@ -499,7 +422,7 @@ if __name__ == "__main__":
     print("\n正在运行 MIMO 仿真...")
     sim_result = mimo_sim.simulate(targets, snr_db=25.0, seed=42)
     print(f"✓ 仿真完成")
-    print(f"  接收数据形状: {sim_result.raw_data.shape}")
+    print(f"  接收数据形状: {sim_result.baseband.shape}")
     print(f"  [RX天线, Chirps, 采样点]")
     
     # 测试 DBF 角度估计

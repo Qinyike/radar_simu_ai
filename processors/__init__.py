@@ -5,9 +5,7 @@
 from processors.lfmcw_processor import (
     process_lfmcw,
     range_fft,
-    doppler_fft,
-    compute_range_axis,
-    compute_doppler_axis
+    doppler_fft
 )
 from processors.mimo_processor import (
     process_mimo,

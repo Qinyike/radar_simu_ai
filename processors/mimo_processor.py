@@ -16,9 +16,9 @@ if __name__ == "__main__":
 
 from typing import Optional
 import numpy as np
-from contracts import ProcessedResult
-from simulators.mimo_simulator import MimoAntennaArray
+from contracts import ProcessedResult, MimoAntennaArray
 from processors.window_utils import get_window
+from utils.axes import compute_range_axis, compute_doppler_axis
 
 
 def process_mimo_tdma(
@@ -80,7 +80,7 @@ def process_mimo_tdma(
 
     # 距离轴
     c = sim_result.c
-    range_axis = np.arange(num_range_bins) * (c / (2 * sim_result.bandwidth))
+    range_axis = compute_range_axis(sim_result.bandwidth, num_samples, c, positive_only=True)
 
     # 多普勒 FFT（TDMA 有效 PRF = prf / num_tx）
     doppler_win = get_window(doppler_window, num_chirps_per_frame)
@@ -89,8 +89,7 @@ def process_mimo_tdma(
     doppler_fft_data = np.fft.fftshift(doppler_fft_data, axes=1)
 
     effective_prf = sim_result.prf / num_tx
-    doppler_freq = np.fft.fftshift(np.fft.fftfreq(num_chirps_per_frame, d=1 / effective_prf))
-    doppler_axis = doppler_freq * c / (2 * sim_result.fc)
+    doppler_axis = compute_doppler_axis(effective_prf, num_chirps_per_frame, sim_result.fc, c)
 
     # RD 谱（所有虚拟元素相干累加）
     rd_spectrum = np.abs(np.mean(doppler_fft_data, axis=0))  # [doppler, range]
@@ -170,10 +169,9 @@ def process_mimo_ddma(
 
     # 坐标轴
     c = sim_result.c
-    range_axis = np.arange(num_range_bins) * (c / (2 * sim_result.bandwidth))
+    range_axis = compute_range_axis(sim_result.bandwidth, num_samples, c, positive_only=True)
 
-    doppler_freq = np.fft.fftshift(np.fft.fftfreq(num_chirps, d=1 / sim_result.prf))
-    doppler_axis = doppler_freq * c / (2 * sim_result.fc)
+    doppler_axis = compute_doppler_axis(sim_result.prf, num_chirps, sim_result.fc, c)
 
     # RD 谱
     rd_spectrum = np.abs(np.mean(doppler_fft_data, axis=0))
@@ -330,7 +328,8 @@ if __name__ == "__main__":
     print("MIMO 雷达处理器测试")
     print("=" * 70)
 
-    from simulators.mimo_simulator import MimoLfmcwSimulator, MimoAntennaArray
+    from contracts import MimoAntennaArray
+    from simulators.mimo_simulator import MimoLfmcwSimulator
 
     antenna_array = MimoAntennaArray(num_tx=4, num_rx=4, fc=77e9)
     mimo_sim = MimoLfmcwSimulator(

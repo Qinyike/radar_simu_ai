@@ -18,6 +18,7 @@ if __name__ == "__main__":
 import numpy as np
 from contracts import SimResult, ProcessedResult
 from processors.window_utils import get_window
+from utils.axes import compute_range_axis, compute_doppler_axis
 
 
 def range_fft(
@@ -72,60 +73,6 @@ def doppler_fft(
     return rd_spectrum
 
 
-def compute_range_axis(
-    fs: float,
-    bandwidth: float,
-    num_samples: int,
-    c: float = 3e8,
-    use_positive_only: bool = True
-) -> np.ndarray:
-    """
-    计算距离轴（物理单位：米）
-    
-    Args:
-        fs: 采样率 (Hz)
-        bandwidth: 信号带宽 (Hz)
-        num_samples: 采样点数
-        c: 光速 (m/s)
-        use_positive_only: 是否只使用正频率部分（默认 True）
-        
-    Returns:
-        距离轴数组，长度 num_samples//2（如果 use_positive_only=True）
-    """
-    num_range_bins = num_samples // 2 if use_positive_only else num_samples
-    range_resolution = c / (2 * bandwidth)
-    range_axis = np.arange(num_range_bins) * range_resolution
-    
-    return range_axis
-
-
-def compute_doppler_axis(
-    prf: float,
-    num_pulses: int,
-    fc: float,
-    c: float = 3e8
-) -> np.ndarray:
-    """
-    计算多普勒轴（物理单位：米/秒）
-    
-    Args:
-        prf: 脉冲重复频率 (Hz)
-        num_pulses: chirp 数量
-        fc: 载波频率 (Hz)
-        c: 光速 (m/s)
-        
-    Returns:
-        多普勒轴数组，长度 num_pulses
-    """
-    # 多普勒频率轴
-    doppler_freq_axis = np.fft.fftshift(np.fft.fftfreq(num_pulses, d=1/prf))
-    
-    # 转换为速度轴：v = f_doppler * c / (2 * fc)
-    velocity_axis = doppler_freq_axis * c / (2 * fc)
-    
-    return velocity_axis
-
-
 def process_lfmcw(
     sim_result: SimResult,
     range_window: str = "taylor",
@@ -159,7 +106,7 @@ def process_lfmcw(
     rd_spectrum = doppler_fft(range_fft_data, window=doppler_window)
     
     # Step 3: 计算坐标轴
-    range_axis = compute_range_axis(fs, bandwidth, samples_per_chirp, c, use_positive_only=True)
+    range_axis = compute_range_axis(bandwidth, samples_per_chirp, c, positive_only=True)
     doppler_axis = compute_doppler_axis(prf, num_chirps, fc, c)
     
     # Step 4: 提取距离剖面（沿多普勒维度的最大值投影）
