@@ -15,16 +15,16 @@ from processors.mimo_processor import (
     process_mimo_ddma,
     mimo_dbf_angle_estimation
 )
+from processors.pmcw_processor import process_pmcw
 from processors.window_utils import get_window
 
 # 处理器注册表
 PROCESSOR_REGISTRY = {
     "lfmcw": process_lfmcw,
+    "pmcw": process_pmcw,
     "mimo": process_mimo,
     "mimo_tdma": process_mimo_tdma,
     "mimo_ddma": process_mimo_ddma,
-    # 未来可以添加更多处理器：
-    # "fmcw": process_fmcw,
 }
 
 

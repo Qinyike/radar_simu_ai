@@ -10,16 +10,14 @@ from simulators.mimo_simulator import (
     MimoLfmcwSimulator, 
     dbf_angle_estimation
 )
+from simulators.pmcw_simulator import PmcwSimulator, create_automotive_pmcw_simulator
 
 # 仿真器注册表
-# 新增仿真器时，只需在此添加映射即可
 SIMULATOR_REGISTRY = {
     "lfmcw": create_automotive_lfmcw_simulator,
+    "pmcw": create_automotive_pmcw_simulator,
     "mimo_tdma": lambda **kwargs: MimoLfmcwSimulator(waveform_mode='tdma', **kwargs),
     "mimo_ddma": lambda **kwargs: MimoLfmcwSimulator(waveform_mode='ddma', **kwargs),
-    # 未来可以添加更多仿真器：
-    # "fmcw": create_fmcw_simulator,
-    # "pmcw": create_pmcw_simulator,
 }
 
 
