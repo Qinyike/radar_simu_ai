@@ -10,3 +10,7 @@ from visualizers.rd_visualizer import (
     plot_angle_spectrum,
     plot_mimo_comprehensive
 )
+from visualizers.interactive import (
+    plot_rd_interactive,
+    plot_comparison_interactive
+)

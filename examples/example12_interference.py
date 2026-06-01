@@ -316,6 +316,27 @@ plt.savefig('./output/example12_range_profile.png', dpi=150, bbox_inches='tight'
 print("  ✓ 距离剖面对比图已保存")
 plt.show()
 
+# ---- 图 4：交互式对比（干净 vs FMCW 互扰）----
+print("\n  打开交互式对比窗口...")
+print("  操作：鼠标悬停显示坐标，点击查看详情，ESC 清除选中")
+
+from visualizers.interactive import plot_comparison_interactive
+
+target_info = {
+    'targets': [{"range": t['range'], "velocity": t['velocity'], "rcs": t['rcs']}
+                for t in targets]
+}
+plot_comparison_interactive(
+    clean, rd_fmcw,
+    target_info=target_info,
+    clean_label="Clean",
+    processed_label="FMCW Radar Interference (RRI)",
+    title="Interactive Comparison: Clean vs FMCW Interference",
+    save_path="./output/example12_interactive_compare.png",
+    show=True
+)
+print("  ✓ 交互式对比图已保存")
+
 # ============================================================================
 # 总结
 # ============================================================================
