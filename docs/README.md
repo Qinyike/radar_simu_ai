@@ -74,6 +74,7 @@ chmod +x run_examples.sh
 ### 项目文档
 - **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** - 项目总结
 - **[EXAMPLES_SUMMARY.md](EXAMPLES_SUMMARY.md)** - 示例代码说明
+- **[radar_simu_ai_summary.typ](radar_simu_ai_summary.typ)** - 工程总结报告（Typst 排版，可直接编译为 PDF）
 
 ## 🔗 相关链接
 
